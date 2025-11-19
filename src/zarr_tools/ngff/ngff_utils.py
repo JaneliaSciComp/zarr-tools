@@ -11,7 +11,7 @@ def add_new_dataset(multiscales_attrs, dataset_path, scale_transform, translatio
     datasets = multiscales_attrs.get('datasets', [])
     dataset_paths = [ds.get('path') for ds in datasets if ds.get('path', None)]
 
-    print(f'Add dataset path: {dataset_path} to {multiscales_attrs}')
+    logger.info(f'Add dataset path: {dataset_path} to {multiscales_attrs}')
 
     if scale_transform is not None:
         dataset = Dataset.build(path=dataset_path,
