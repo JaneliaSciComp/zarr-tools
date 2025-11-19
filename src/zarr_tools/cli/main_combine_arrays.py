@@ -8,7 +8,7 @@ from zarr_tools.ngff.ngff_utils import (get_axes, get_multiscales, get_voxel_spa
 from zarr_tools.combine_arrays import combine_arrays
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
-from src.zarr_tools.io.zarr_io import (open_zarr,create_zarr_array)
+from zarr_tools.io.zarr_io import (open_zarr,create_zarr_array)
 
 
 logger = None
