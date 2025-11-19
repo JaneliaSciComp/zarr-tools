@@ -144,7 +144,7 @@ def create_multiscale(multiscale_group: zarr.Group,
             new_dataset_arr,
             downsampling_factors=tuple(relative_scaling_factors),
             method='mode' if data_type == 'segmentation' else 'mean',
-            antialising=antialiasing,
+            antialiasing=antialiasing,
         )
 
         output_chunks = normalize_chunks(new_dataset_arr.chunks, shape=new_dataset_arr.shape)
@@ -223,7 +223,7 @@ def _downsample(input:zarr.Array,
                 output_coords: Tuple[slice, ...],
                 downsampling_factors:Tuple[int, ...]=(2,2,2),
                 method:str='mean',
-                antialising:bool=False):
+                antialiasing:bool=False):
     """
     Downsample source to target shape using the specified method.
     """
@@ -238,7 +238,7 @@ def _downsample(input:zarr.Array,
             output[output_coords] = windowed_mode(input_block, window_size=downsampling_factors)
         else:
             # this is the method used for raw image data
-            if antialising:
+            if antialiasing:
                 # blur data in chunk before downsampling to reduce aliasing of the image
                 # conservative Gaussian blur coeff: 2/2.5 = 0.8
                 sigma = [0 if factor == 1 else factor/2.5 for factor in downsampling_factors]

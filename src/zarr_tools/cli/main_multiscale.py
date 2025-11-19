@@ -36,7 +36,7 @@ def _define_args():
                              dest='antialiasing',
                              default=False,
                              action='store_true',
-                             help='antialiasing')
+                             help='Use antialiasing during downsampling')
     input_args.add_argument('--skip-metadata', '--skip_metadata',
                              dest='skip_metadata',
                              default=False,
