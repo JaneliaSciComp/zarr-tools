@@ -27,11 +27,13 @@ def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
     partitioned_block_slices = tuple(partition_all(partition_size, block_slices))
     logger.info(f'Partition {len(block_slices)} into {len(partitioned_block_slices)} partitions of up to {partition_size} blocks')
 
+    nblocks = 0
+
     for idx, part in enumerate(partitioned_block_slices):
         logger.info(f'Process partition {idx} ({len(part)} blocks)')
-        input_blocks = client.map(_read_input_blocks, part, source_arrays=input_zarrays)
-        res = client.map(_write_blocks, input_blocks, output=output_zarray)
 
+        res = client.map(_copy_blocks, part, source_arrays=input_zarrays,output=output_zarray)
+        npartition_blocks = 0
         for f, r in as_completed(res, with_results=True):
             if f.cancelled():
                 exc = f.exception()
@@ -39,25 +41,26 @@ def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
                 res = False
             else:
                 logger.debug(f'Finished writing blocks {r}')
+                npartition_blocks = npartition_blocks + r
 
-        logger.info(f'Finished partition {idx}')
+        logger.info(f'Finished partition {idx} - copied {npartition_blocks} blocks')
+        nblocks = nblocks + npartition_blocks
+
+    logger.info(f'Finished all {len(partitioned_block_slices)} - copied {nblocks} blocks')
+    return nblocks
 
 
-def _read_input_blocks(coords, source_arrays=[]):
+def _copy_blocks(coords, source_arrays=[], output=[]):
     # source_arrays have: (path, subpath, zarray, channel, timepoint)
-    return [(coords, ch, tp, arr[coords[-3:]]) for (_, _, arr, ch, tp) in source_arrays]
-
-
-def _write_blocks(blocks, output=[]):
-    written_blocks = []
-    for (coords, ch, tp, block) in blocks:
+    # the input arrays are all 3-D for now
+    # this package cannot handle inputs other than 3-D
+    nblocks = 0
+    input_spatial_coords =coords[-3:] 
+    for (_, _, arr, ch, tp) in source_arrays:
         if tp is not None:
-            block_coords = (tp, ch) + coords[-3:]
+            output_block_coords = (tp, ch) + input_spatial_coords
         else:
-            block_coords = (ch,) + coords[-3:]
-        # write the block
-        output[block_coords] = block
-        written_blocks.append(block_coords)
-        del block
-
-    return written_blocks
+            output_block_coords = (ch,) + input_spatial_coords
+        output[output_block_coords] = arr[input_spatial_coords]
+        nblocks = nblocks + 1
+    return nblocks
