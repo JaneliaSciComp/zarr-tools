@@ -2,6 +2,7 @@ import logging
 import numpy as np
 
 from ome_zarr_models.v04.image import (Dataset)
+from typing import List, Tuple
 
 
 logger = logging.getLogger(__name__)
@@ -34,24 +35,34 @@ def add_new_dataset(multiscales_attrs, dataset_path, scale_transform, translatio
     return multiscales_attrs
 
 
-def get_axes(multiscales_attrs):
+def get_axes_from_multiscales(multiscales_attrs):
     """
     Get multiscale axes if present or None otherwise
     """
     return multiscales_attrs.get('axes', None)
 
 
-def get_first_space_axis(multiscales_attrs, dataset_dims=-1, spatial_dims=3):
+def get_axes(attrs):
     """
-    Get the first space axis index from the multiscale attributes.
+    Try first to retrieve the axes as if the attrs were multiscale attributes,
+    otherwise retrieve the multiscales first and then retrieve the axes from the multiscales
     """
-    axes = get_axes(multiscales_attrs)
+    return attrs.get('axes', get_axes_from_multiscales(get_multiscales(attrs)))
+
+
+def get_spatial_axes(multiscales_attrs) -> Tuple:
+    """
+    Get the indexes of all space axes.
+    """
+    axes = get_axes_from_multiscales(multiscales_attrs)
     if axes is not None:
+        axes_indexes = []
         for i, axis in enumerate(axes):
             if axis.get('type') == 'space' or axis.get('name', '').lower() in ['z', 'y', 'x']:
-                return i
-
-    return dataset_dims - spatial_dims if dataset_dims > spatial_dims else 0
+                axes_indexes.append(i)
+        return tuple(axes_indexes)
+    else:
+        return ()
 
 
 def get_dataset_at(multiscale_attrs, dataset_index):
@@ -73,7 +84,8 @@ def get_dataset(multiscale_attrs, dataset_path):
             f'Compare current dataset path: {ds_path} ({ds_path_comps}) '
             f'with {dataset_path} ({dataset_path_comps}) '
         ))
-        if tuple(ds_path_comps) == tuple(dataset_path_comps):
+        if (len(ds_path_comps) <= len(dataset_path_comps) and
+            tuple(ds_path_comps) == tuple(dataset_path_comps[-len(ds_path_comps):])):
             # found a dataset that has a path matching a suffix of the dataset_subpath arg
             logger.info(f'Found dataset at {ds_path}')
             return ds
@@ -89,6 +101,18 @@ def get_dataset_transformations(dataset, default_scale=None, default_translation
     scale, translation = default_scale, default_translation
     coord_transformations = (dataset.get('coordinateTransformations', [])
                              if dataset is not None else [])
+    for t in coord_transformations:
+        if t['type'] == 'scale':
+            scale = t['scale']
+        elif t['type'] == 'translation':
+            translation = t['translation']
+
+    return scale, translation
+
+
+def get_global_transformations(multiscale_attrs, default_scale=None, default_translation=None):
+    coord_transformations = (multiscale_attrs.get('coordinateTransformations', []))
+    scale, translation = default_scale, default_translation
     for t in coord_transformations:
         if t['type'] == 'scale':
             scale = t['scale']
@@ -116,8 +140,6 @@ def get_transformations_from_datasetpath(multiscale_attrs, dataset_path, default
     return scale, translation
 
 
-
-
 def get_datasets(multiscale_attrs):
     return multiscale_attrs.get('datasets', [])
 
@@ -136,29 +158,33 @@ def has_multiscales(attrs):
     return 'multiscales' in attrs
 
 
-def get_voxel_spacing(attrs):
-    dataset = get_dataset_at(get_multiscales(attrs), 0)
-    pr = None
-    if dataset is not None and dataset.get('coordinateTransformations'):
-        scale, _ = get_dataset_transformations(dataset, default_scale=[])
-        if len(scale) > 0:
-            pr = scale[-3:]
-        else:
-            pr = None
-    elif (attrs.get('downsamplingFactors')):
-        # N5 at scale > S0
-        pr = (np.array(attrs['pixelResolution']) * 
-              np.array(attrs['downsamplingFactors']))
-        pr = pr[::-1]  # zyx order
-    elif attrs.get('pixelResolution'):
-        # N5 at scale S0
-        pr_attr = attrs.get('pixelResolution')
-        if type(pr_attr) is list:
-            pr = np.array(pr_attr)
-            pr = pr[::-1]  # zyx order
-        elif type(pr_attr) is dict:
-            if pr_attr.get('dimensions'):
-                pr = np.array(pr_attr['dimensions'])
-                pr = pr[::-1]  # zyx order
-    logger.debug(f'Voxel spacing from attributes: {pr}')
-    return pr
+def get_spatial_voxel_spacing(attrs) -> List[int] | None:
+    multiscales = get_multiscales(attrs)
+    dataset = get_dataset_at(multiscales, 0)
+    voxel_resolution_values = None
+    global_scale, _ = get_global_transformations(multiscales) if multiscales is not None else (None, None)
+    dataset_scale, _ = get_dataset_transformations(dataset) if dataset is not None else (None, None)
+    if global_scale is None and dataset_scale is None:
+        if attrs.get('donwsamplingFactors'):
+            # N5 at scale > S0
+            pr = (np.array(attrs['pixelResolution']) * 
+                np.array(attrs['downsamplingFactors']))
+            voxel_resolution_values = list(pr[::-1])  # list of voxel spacings in zyx order
+        elif attrs.get('pixelResolution'):
+            # N5 at scale S0
+            pr_attr = attrs.get('pixelResolution')
+            if type(pr_attr) is list:
+                pr = np.array(pr_attr)
+                voxel_resolution_values = list(pr[::-1])  # list of voxel spacings in zyx order
+            elif type(pr_attr) is dict:
+                if pr_attr.get('dimensions'):
+                    pr = np.array(pr_attr['dimensions'])
+                    voxel_resolution_values = list(pr[::-1])  # list of voxel spacings in zyx order
+    else:
+        spatial_axes = get_spatial_axes(multiscales)
+        nspatial_axes = len(spatial_axes) if spatial_axes != () else 3 # default to 3-D
+        gscale_array = np.array(global_scale[-nspatial_axes:]) if global_scale else np.array((1,)*nspatial_axes)
+        dscale_array = np.array(dataset_scale[-nspatial_axes:]) if dataset_scale else np.array((1,)*nspatial_axes)
+        voxel_resolution_values = list(gscale_array * dscale_array)
+
+    return voxel_resolution_values

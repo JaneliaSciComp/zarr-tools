@@ -4,8 +4,11 @@ import os
 import re
 import zarr
 
-from ..ngff.ngff_utils import (get_dataset, get_datasets, get_multiscales, has_multiscales)
-from typing import Tuple
+from ..ngff.ngff_utils import (get_axes, get_dataset, get_datasets,
+                               get_multiscales, has_multiscales,
+                               get_axes_from_multiscales, get_global_transformations,
+                               get_dataset_transformations)
+from typing import List,Tuple
 
 
 logger = logging.getLogger(__name__)
@@ -33,8 +36,16 @@ def create_zarr_array(container_path:str,
              else codecs.get_codec({"id": compressor, **compression_opts}))
 
     if array_subpath:
+        logger.info((
+            f'Create array {container_path}:{array_subpath} '
+            f'compressor={compressor}, shape: {shape}, chunks: {chunks} '
+            f'parent attrs: {parent_array_attrs} '
+            f'array attrs: {array_attrs} '
+        ))
+
         root_group = zarr.open_group(store=store, mode='a')
         if overwrite:
+            # create an array dataset no matter whether it exists or not
             current_shape = shape
             zarray = root_group.create_dataset(
                 array_subpath,
@@ -71,6 +82,7 @@ def create_zarr_array(container_path:str,
             zarray.attrs.update(array_attrs)
             return zarray
     else:
+        # the zarr container is the array
         if overwrite:
             current_shape = shape
             zarray = zarr.create(
@@ -101,7 +113,10 @@ def create_zarr_array(container_path:str,
         return zarray
 
 
-def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r', dimension_separator:str|None=None):
+def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r',
+              dimension_separator:str|None=None,
+              timeindex:int|slice|List|None=None,
+              channel:int|slice|List|None=None):
     try:
         zarr_container, zarr_subpath = _get_data_store(data_path, data_subpath, data_store_name, dimension_separator=dimension_separator)
 
@@ -110,8 +125,12 @@ def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mo
         multiscales_group, dataset_subpath, multiscales_attrs  = _lookup_ome_multiscales(data_container, zarr_subpath)
 
         if multiscales_group is not None:
-            logger.info(f'Open OME ZARR {zarr_container.path}:{zarr_subpath}')
-            return _open_ome_zarr(multiscales_group, dataset_subpath, multiscales_attrs)
+            logger.info((
+                f'Open OME ZARR {zarr_container.path}:{zarr_subpath} '
+                f'(timeindex: {timeindex}, channel:{channel}) '
+            ))
+            return _open_ome_zarr(multiscales_group, dataset_subpath, multiscales_attrs,
+                                  timeindex=timeindex, channel=channel)
         else:
             logger.info(f'Open Simple ZARR {data_container.path}:{zarr_subpath}')
             return _open_simple_zarr(data_container, zarr_subpath)
@@ -145,7 +164,8 @@ def _get_data_store(data_path, data_subpath, data_store_name, dimension_separato
         if (os.path.exists(f'{container_path}/.zgroup') or
             os.path.exists(f'{container_path}/.zattrs') or
             os.path.exists(f'{container_path}/.zarray') or
-            os.path.exists(f'{container_path}/attributes.json')):
+            os.path.exists(f'{container_path}/attributes.json') or
+            os.path.exists(f'{container_path}/zarr.json')):
             break
         dataset_comps_index = dataset_comps_index + 1
 
@@ -185,7 +205,8 @@ def _lookup_ome_multiscales(data_container, data_subpath):
         return None, None, {}
 
 
-def _open_ome_zarr(multiscales_group, dataset_subpath, attrs):
+def _open_ome_zarr(multiscales_group, dataset_subpath, attrs,
+                   timeindex=None, channel=None):
 
     multiscale_metadata = get_multiscales(attrs)
 
@@ -218,7 +239,13 @@ def _open_ome_zarr(multiscales_group, dataset_subpath, attrs):
     dataset_path = dataset_metadata.get('path')
     logger.info(f'Get dataset using path: {dataset_path}')
     a = multiscales_group[dataset_path] if dataset_path else multiscales_group
-    _set_array_attrs(attrs, dataset_path, a.shape, a.dtype, a.chunks)
+    global_scale, global_translation = get_global_transformations(multiscale_metadata)
+    dataset_scale, dataset_translation = get_dataset_transformations(dataset_metadata)
+    _set_array_attrs(attrs, dataset_path, a.shape, a.dtype, a.chunks,
+                     axes=get_axes_from_multiscales(multiscale_metadata),
+                     timeindex=timeindex, channel=channel,
+                     global_scale=global_scale, global_translation=global_translation,
+                     dataset_scale=dataset_scale, dataset_translation=dataset_translation)
 
     return multiscales_group, attrs, dataset_path
 
@@ -261,17 +288,27 @@ def _open_simple_zarr(data_container, data_subpath):
         return parent_group, attrs, (dataset_comps[-1] if len(dataset_comps) > 0 else '')
 
 
-def _set_array_attrs(attrs, subpath, shape, dtype, chunks):
+def _set_array_attrs(attrs, subpath, shape, dtype, chunks,
+                     axes=None, timeindex=None, channel=None,
+                     global_scale=None, global_translation=None,
+                     dataset_scale=None, dataset_translation=None):
     """
     Add useful datasets attributes from the array attributes:
     shape, ndims, data_type, chunksize
     """
     attrs.update({
-        'dataset_path': subpath,
-        'dataset_shape': shape,
-        'dataset_dims': len(shape),
-        'dataset_dtype': dtype.name,
-        'dataset_blocksize': chunks,
+        'global_scale': global_scale,
+        'global_translation': global_translation,
+        'current_axes': axes,
+        'current_dataset_path': subpath,
+        'current_dataset_shape': shape,
+        'current_dataset_dims': len(shape),
+        'current_dataset_dtype': dtype.name,
+        'current_dataset_blocksize': chunks,
+        'current_dataset_scale': dataset_scale,
+        'current_dataset_translation': dataset_translation,
+        'current_timeindex': timeindex,
+        'current_channel': channel,
     })
     return attrs
 
@@ -295,3 +332,52 @@ def _update_parent_attrs(root_group, array_subpath, parent_attrs):
         parent_group = root_group
 
     parent_group.attrs.update(parent_attrs)
+
+
+def read_zarr_block(arr, metadata,
+                    timeindex: int|None, ch:int|List[int]|None,
+                    block_coords: Tuple|None):
+    ndim = arr.ndim
+    if block_coords is None:
+        coords_param = (slice(None,None),) * ndim
+    elif len(block_coords) < ndim:
+        coords_param = (slice(None,None),) * (ndim - len(block_coords)) + block_coords
+    else:
+        coords_param = block_coords
+
+    selector = []
+    selection_exists = False
+
+    axes = get_axes(metadata) or []
+
+    for ai, a in enumerate(axes):
+        if a.get('type') == 'time':
+            if timeindex is not None:
+                selector.append(timeindex)
+                selection_exists = True
+            else:
+                selector.append(coords_param[ai])
+        elif a.get('type') == 'channel':
+            if ch is None or ch == []:
+                selector.append(coords_param[ai])
+            else:
+                selector.append(ch)
+                selection_exists = True
+        else:
+            selector.append(coords_param[ai])
+
+        selection_exists = (selection_exists or
+                            coords_param[ai].start is not None or
+                            coords_param[ai].stop is not None)
+
+    if selection_exists:
+        try:
+            # try to select the data using the selector
+            block_slice_coords = tuple(selector)
+            logger.debug(f'Get block at {block_slice_coords}')
+            return arr[block_slice_coords]
+        except Exception  as e:
+            logger.exception(f'Error selecting data with selector {tuple(selector)}')
+            raise e
+    else:
+        return arr

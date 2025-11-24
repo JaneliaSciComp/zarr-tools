@@ -1,17 +1,18 @@
 import argparse
 import json
+import logging
 
 from dask.distributed import (Client, LocalCluster)
 from dataclasses import dataclass
 
-from zarr_tools.ngff.ngff_utils import (get_axes, get_multiscales, get_voxel_spacing)
+from zarr_tools.ngff.ngff_utils import (get_axes_from_multiscales, get_multiscales, get_spatial_voxel_spacing)
 from zarr_tools.combine_arrays import combine_arrays
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
 from zarr_tools.io.zarr_io import (open_zarr,create_zarr_array)
 
 
-logger = None
+logger:logging.Logger
 
 
 @dataclass(frozen=True)
@@ -40,16 +41,23 @@ def _arrayparams(s: str):
     return ZArrayParams(sourcePath, sourceSubpath, targetCh, targetTp)
 
 
-def _as_json(arg):
+def _as_json(arg:str):
     if arg:
         return json.loads(arg)
     else:
         return {}
 
 
-def _inttuple(arg):
+def _inttuple(arg:str):
     if arg is not None and arg.strip():
         return tuple([int(d) for d in arg.split(',')])
+    else:
+        return ()
+
+
+def _floattuple(arg:str):
+    if arg is not None and arg.strip():
+        return tuple([float(d) for d in arg.split(',')])
     else:
         return ()
 
@@ -71,10 +79,10 @@ def _define_args():
                              type=str,
                              help='Output container directory')
     input_args.add_argument('--voxel-spacing', '--voxel_spacing',
-                            type=_inttuple,
+                            type=_floattuple,
                             dest='voxel_spacing',
                             metavar='X,Y,Z',
-                            default=(1, 1, 1),
+                            default=(1., 1., 1.),
                             help='Spatial output chunks')
     input_args.add_argument('--output-subpath', '--output_subpath',
                              dest='output_subpath',
@@ -185,14 +193,14 @@ def _run_combine_arrays(args):
         zgroup, zattrs, zsubpath = open_zarr(array_container, ap.sourceSubpath, mode='r')
         zarray = zgroup[zsubpath] if zsubpath else zgroup
 
-        current_voxel_spacing = get_voxel_spacing(zattrs)
+        current_voxel_spacing = get_spatial_voxel_spacing(zattrs)
         if voxel_spacing is None:
             voxel_spacing = current_voxel_spacing
         elif voxel_spacing != current_voxel_spacing:
             logger.warning(f'Voxel spacing for {current_voxel_spacing} differs from the first found: {voxel_spacing}')
 
         if axes is None:
-            axes = get_axes(get_multiscales(zattrs))
+            axes = get_axes_from_multiscales(get_multiscales(zattrs))
 
         if not output_type:
             output_type = zarray.dtype
@@ -256,11 +264,9 @@ def _run_combine_arrays(args):
         logger.info(f'Finished combining all arrays into {args.output}:{args.output_subpath}!')
 
     dask_client.close()
-    if dask_cluster is not None:
-        dask_cluster.close()
 
 
-def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default_unit='um'):
+def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default_unit='micrometer'):
     scale = ([1] if final_ndims == 4 else [1, 1]) + voxel_spacing
     translation = [0] * final_ndims
     if axes is None:

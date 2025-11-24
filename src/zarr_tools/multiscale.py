@@ -8,7 +8,7 @@ import zarr
 from dask.array.core import normalize_chunks, slices_from_chunks
 from dask.distributed import Client, as_completed
 from .ngff.ngff_utils import (get_transformations_from_datasetpath,
-                              get_first_space_axis, get_multiscales, add_new_dataset)
+                              get_spatial_axes, get_multiscales, add_new_dataset)
 from toolz import partition_all
 from typing import List, Tuple
 from xarray_multiscale import windowed_mean, windowed_mode
@@ -43,8 +43,10 @@ def create_multiscale(multiscale_group: zarr.Group,
     )
     dataset_blocksize = group_attrs.get('dataset_blocksize', [])
 
+    spatial_axes = get_spatial_axes(pyramid_attrs)
+
     def is_spatial_axis(axis:int) -> bool:
-        return axis >= get_first_space_axis(pyramid_attrs, dataset_dims=len(source_dataset_shape))
+        return axis in spatial_axes
 
     absolute_scaling_factors = np.array([pow(2, source_dataset_level)
                                         if is_spatial_axis(i) else 1
