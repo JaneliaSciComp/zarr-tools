@@ -337,13 +337,18 @@ def _update_parent_attrs(root_group, array_subpath, parent_attrs):
 def read_zarr_block(arr, metadata,
                     timeindex: int|None, ch:int|List[int]|None,
                     block_coords: Tuple|None):
+    """
+    Read a data block from the specified coordinates.
+    """
     ndim = arr.ndim
+    # if there are fewer coordinates than the array dimension,
+    # extend the block coordinates up to the number of array dimensions
     if block_coords is None:
-        coords_param = (slice(None,None),) * ndim
+        input_block_coords = (slice(None,None),) * ndim
     elif len(block_coords) < ndim:
-        coords_param = (slice(None,None),) * (ndim - len(block_coords)) + block_coords
+        input_block_coords = (slice(None,None),) * (ndim - len(block_coords)) + block_coords
     else:
-        coords_param = block_coords
+        input_block_coords = block_coords
 
     selector = []
     selection_exists = False
@@ -356,19 +361,19 @@ def read_zarr_block(arr, metadata,
                 selector.append(timeindex)
                 selection_exists = True
             else:
-                selector.append(coords_param[ai])
+                selector.append(input_block_coords[ai])
         elif a.get('type') == 'channel':
             if ch is None or ch == []:
-                selector.append(coords_param[ai])
+                selector.append(input_block_coords[ai])
             else:
                 selector.append(ch)
                 selection_exists = True
         else:
-            selector.append(coords_param[ai])
+            selector.append(input_block_coords[ai])
 
         selection_exists = (selection_exists or
-                            coords_param[ai].start is not None or
-                            coords_param[ai].stop is not None)
+                            input_block_coords[ai].start is not None or
+                            input_block_coords[ai].stop is not None)
 
     if selection_exists:
         try:
