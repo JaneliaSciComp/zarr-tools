@@ -4,12 +4,13 @@ import logging
 
 from dask.distributed import (Client, LocalCluster)
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 from zarr_tools.ngff.ngff_utils import (get_axes_from_multiscales, get_multiscales, get_spatial_voxel_spacing)
 from zarr_tools.combine_arrays import combine_arrays
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
-from zarr_tools.io.zarr_io import (open_zarr,create_zarr_array)
+from zarr_tools.io.zarr_io import (create_zarr_array, create_zarr_group, open_zarr)
 
 
 logger:logging.Logger
@@ -121,11 +122,11 @@ def _define_args():
                             dest='array_params',
                             help='Input array argument')
 
-    input_args.add_argument('--skip-ome-metadata', '--skip_ome_metadata',
-                            dest='skip_ome_metadata',
+    input_args.add_argument('--as-labels', '--as_labels',
+                            dest='as_labels',
                             default=False,
                             action='store_true',
-                            help='If set skip creation of the OME metadata')
+                            help='If set create the labels attributes')
 
     input_args.add_argument('--logging-config', '--logging_config',
                             dest='logging_config',
@@ -189,6 +190,7 @@ def _run_combine_arrays(args):
     voxel_spacing = None
     axes = None
     for ap in args.array_params:
+        logger.info(f'Add array: {ap}')
         array_container = ap.sourcePath if ap.sourcePath else args.input
         zgroup, zattrs, zsubpath = open_zarr(array_container, ap.sourceSubpath, mode='r')
         zarray = zgroup[zsubpath] if zsubpath else zgroup
@@ -236,13 +238,15 @@ def _run_combine_arrays(args):
         if voxel_spacing is None:
             voxel_spacing = list(args.voxel_spacing[::-1])
 
-        if args.skip_ome_metadata:
-            ome_metadata = {}
-        else:
-            ome_metadata = _create_ome_metadata(args.output_subpath,
-                                                axes,
-                                                voxel_spacing, 
-                                                (4 if max_tp is None else 5))
+        ome_metadata = _create_ome_metadata(args.output_subpath,
+                                            axes,
+                                            voxel_spacing, 
+                                            (4 if max_tp is None else 5))
+        if args.as_labels:
+            logger.info(f'Create labels group: {args.output_subpath}')
+            create_labels(args.output, args.output_subpath)
+
+
         logger.info((
             f'Create output {args.output}:{args.output_subpath}:{output_shape}:{output_chunks}:{output_type} '
             f'OME metadata: {ome_metadata}'
@@ -267,6 +271,13 @@ def _run_combine_arrays(args):
 
 
 def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default_unit='micrometer'):
+    if not dataset_path:
+        relative_dataset_path = ''
+    else:
+        # ignore leading '/'
+        path_comps = [p for p in PurePosixPath(dataset_path).parts if p not in ('', '/')]
+        relative_dataset_path = path_comps[-1]
+
     scale = ([1] if final_ndims == 4 else [1, 1]) + voxel_spacing
     translation = [0] * final_ndims
     if axes is None:
@@ -302,7 +313,7 @@ def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default
         })
 
     dataset = {
-        'path': dataset_path,
+        'path': relative_dataset_path,
         'coordinateTransformations': [
             {
                 'type': 'scale',
@@ -328,6 +339,29 @@ def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default
     }
 
     return multiscales
+
+
+def create_labels(container_path, labels_dataset_path):
+    if not labels_dataset_path:
+        raise ValueError('Invalid OME labels subset:')
+
+    # ignore leading '/'
+    default_labels_group = 'labels'
+    path_comps = [p for p in PurePosixPath(labels_dataset_path).parts if p not in ('', '/')]
+    label_path_comps = path_comps[1:-1] if path_comps[0] == default_labels_group else path_comps[0:-1]
+
+    if len(label_path_comps) == 0:
+        raise ValueError((
+            f'Labels dataset subpath {labels_dataset_path} must have at least one component under labels '
+            'excluding the multiscale, e.g. labels/soma/0 or labels/nuclei/0 '
+        ))
+
+    labels_group = create_zarr_group(container_path, default_labels_group)
+    labels_list = labels_group.attrs.get('labels', [])
+    labels_list.append('/'.join(label_path_comps))
+    labels_group.attrs.update({
+        'labels': labels_list,
+    })
 
 
 def main():

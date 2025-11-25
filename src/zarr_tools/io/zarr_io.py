@@ -113,10 +113,25 @@ def create_zarr_array(container_path:str,
         return zarray
 
 
+
+def create_zarr_group(container_path:str, group_subpath:str, group_attrs:dict={}, store_name:str|None=None):
+    real_container_path = os.path.realpath(container_path)
+    if store_name == 'n5':
+        store = zarr.N5Store(real_container_path)
+    else:
+        store = zarr.DirectoryStore(real_container_path, dimension_separator='/')
+    root_group = zarr.open_group(store=store, mode='a')
+    if group_subpath in root_group:
+        # get group
+        g = root_group[group_subpath]
+    else:
+        # create the group
+        g = root_group.create_group(group_subpath)
+    return g
+
+
 def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r',
-              dimension_separator:str|None=None,
-              timeindex:int|slice|List|None=None,
-              channel:int|slice|List|None=None):
+              dimension_separator:str|None=None):
     try:
         zarr_container, zarr_subpath = _get_data_store(data_path, data_subpath, data_store_name, dimension_separator=dimension_separator)
 
@@ -127,10 +142,8 @@ def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mo
         if multiscales_group is not None:
             logger.info((
                 f'Open OME ZARR {zarr_container.path}:{zarr_subpath} '
-                f'(timeindex: {timeindex}, channel:{channel}) '
             ))
-            return _open_ome_zarr(multiscales_group, dataset_subpath, multiscales_attrs,
-                                  timeindex=timeindex, channel=channel)
+            return _open_ome_zarr(multiscales_group, dataset_subpath, multiscales_attrs)
         else:
             logger.info(f'Open Simple ZARR {data_container.path}:{zarr_subpath}')
             return _open_simple_zarr(data_container, zarr_subpath)
@@ -205,8 +218,7 @@ def _lookup_ome_multiscales(data_container, data_subpath):
         return None, None, {}
 
 
-def _open_ome_zarr(multiscales_group, dataset_subpath, attrs,
-                   timeindex=None, channel=None):
+def _open_ome_zarr(multiscales_group, dataset_subpath, attrs):
 
     multiscale_metadata = get_multiscales(attrs)
 
@@ -243,7 +255,6 @@ def _open_ome_zarr(multiscales_group, dataset_subpath, attrs,
     dataset_scale, dataset_translation = get_dataset_transformations(dataset_metadata)
     _set_array_attrs(attrs, dataset_path, a.shape, a.dtype, a.chunks,
                      axes=get_axes_from_multiscales(multiscale_metadata),
-                     timeindex=timeindex, channel=channel,
                      global_scale=global_scale, global_translation=global_translation,
                      dataset_scale=dataset_scale, dataset_translation=dataset_translation)
 
@@ -289,8 +300,7 @@ def _open_simple_zarr(data_container, data_subpath):
 
 
 def _set_array_attrs(attrs, subpath, shape, dtype, chunks,
-                     axes=None, timeindex=None, channel=None,
-                     global_scale=None, global_translation=None,
+                     axes=None, global_scale=None, global_translation=None,
                      dataset_scale=None, dataset_translation=None):
     """
     Add useful datasets attributes from the array attributes:
@@ -307,8 +317,6 @@ def _set_array_attrs(attrs, subpath, shape, dtype, chunks,
         'current_dataset_blocksize': chunks,
         'current_dataset_scale': dataset_scale,
         'current_dataset_translation': dataset_translation,
-        'current_timeindex': timeindex,
-        'current_channel': channel,
     })
     return attrs
 
@@ -335,7 +343,8 @@ def _update_parent_attrs(root_group, array_subpath, parent_attrs):
 
 
 def read_zarr_block(arr, metadata,
-                    timeindex: int|None, ch:int|List[int]|None,
+                    timeindex: int|None,
+                    channelindex:int|List[int]|None,
                     block_coords: Tuple|None):
     """
     Read a data block from the specified coordinates.
@@ -363,10 +372,10 @@ def read_zarr_block(arr, metadata,
             else:
                 selector.append(input_block_coords[ai])
         elif a.get('type') == 'channel':
-            if ch is None or ch == []:
+            if channelindex is None or ch == []:
                 selector.append(input_block_coords[ai])
             else:
-                selector.append(ch)
+                selector.append(channelindex)
                 selection_exists = True
         else:
             selector.append(input_block_coords[ai])

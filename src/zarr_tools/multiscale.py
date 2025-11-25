@@ -25,7 +25,6 @@ def create_multiscale(multiscale_group: zarr.Group,
                       antialiasing:bool,
                       partition_size:int,
                       max_levels:int,
-                      skip_attrs_update:bool,
                       client: Client):
     """
     Create a multiscale pyramid in the given Zarr group.
@@ -34,14 +33,18 @@ def create_multiscale(multiscale_group: zarr.Group,
     dataset_regex = re.compile(dataset_pattern)
     pyramid_attrs = get_multiscales(group_attrs)
 
-    source_dataset_shape = group_attrs.get('dataset_shape', [])
+    source_dataset_shape = group_attrs.get('current_dataset_shape', [])
     source_dataset_level = int(dataset_regex.match(dataset_path).group(1))
     source_dataset_scale, source_dataset_translation = get_transformations_from_datasetpath(
         pyramid_attrs, dataset_path,
         default_scale=(1,) * len(source_dataset_shape),
         default_translation=(0,) * len(source_dataset_shape),
     )
-    dataset_blocksize = group_attrs.get('dataset_blocksize', [])
+    dataset_blocksize = group_attrs.get('current_dataset_blocksize', [])
+    logger.info((
+        f'Start/Final dataset shapes extracted from {group_attrs}: '
+        f'{source_dataset_shape}/{dataset_blocksize} '
+    ))
 
     spatial_axes = get_spatial_axes(pyramid_attrs)
 
@@ -172,10 +175,10 @@ def create_multiscale(multiscale_group: zarr.Group,
         dataset_arr = new_dataset_arr
         nlevels = nlevels + 1
 
-    if not skip_attrs_update:
-        multiscale_group.attrs.update({
-            'multiscales': [ pyramid_attrs ],
-        })
+    # update multscales group attributes
+    multiscale_group.attrs.update({
+        'multiscales': [ pyramid_attrs ],
+    })
 
 
 def _get_downsample_factors(level:int,

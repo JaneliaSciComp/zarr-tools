@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 from dask.distributed import (Client, LocalCluster)
 
@@ -8,7 +9,7 @@ from zarr_tools.multiscale import create_multiscale
 from zarr_tools.io.zarr_io import open_zarr
 
 
-logger = None
+logger:logging.Logger
 
 
 def _define_args():
@@ -37,11 +38,6 @@ def _define_args():
                              default=False,
                              action='store_true',
                              help='Use antialiasing during downsampling')
-    input_args.add_argument('--skip-metadata', '--skip_metadata',
-                             dest='skip_metadata',
-                             default=False,
-                             action='store_true',
-                             help='Skip metadata update')
     input_args.add_argument('--max-levels', '--max_levels',
                              dest='max_levels',
                              type=int,
@@ -111,7 +107,6 @@ def _run_multiscale(args):
                       args.data_type, args.antialiasing,
                       partition_size,
                       args.max_levels,
-                      args.skip_metadata,
                       dask_client)
 
     logger.info(f'Finished multiscale for {args.input}:{args.input_subpath}')
