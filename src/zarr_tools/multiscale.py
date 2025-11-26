@@ -138,7 +138,7 @@ def create_multiscale(multiscale_group: zarr.Group,
             shape=current_level_shape,
             chunks=dataset_blocksize,
             dtype=dataset_arr.dtype,
-            compressors=dataset_arr.compressor,
+            compressors=dataset_arr.compressors,
             fill_value=dataset_arr.fill_value,
             exact=True,
         )
