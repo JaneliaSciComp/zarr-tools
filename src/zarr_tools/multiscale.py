@@ -133,6 +133,9 @@ def create_multiscale(multiscale_group: zarr.Group,
             f'pyramid_attrs -> {pyramid_attrs} '
         ))
 
+        chunk_key_separator = ({'name': 'v2', 'separator': '/'} 
+                               if multiscale_group.metadata.zarr_format == 2
+                               else None)
         new_dataset_arr = multiscale_group.require_array(
             new_level_path,
             shape=current_level_shape,
@@ -141,6 +144,7 @@ def create_multiscale(multiscale_group: zarr.Group,
             compressors=dataset_arr.compressors,
             fill_value=dataset_arr.fill_value,
             exact=True,
+            chunk_key_encoding=chunk_key_separator,
         )
 
         downsample = functools.partial(

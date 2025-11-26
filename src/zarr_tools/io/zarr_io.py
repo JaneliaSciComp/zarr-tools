@@ -68,6 +68,8 @@ def create_zarr_array(container_path:str,
     codec = _get_compressor(compressor, compression_opts, zarr_format)
     compressor_args = _compressor_kwargs(codec, zarr_format)
 
+    chunk_key_separator = {'name': 'v2', 'separator': '/'} if zarr_format == 2 else None
+
     if array_subpath:
         logger.info((
             f'Create array {container_path}:{array_subpath} '
@@ -86,6 +88,7 @@ def create_zarr_array(container_path:str,
                 chunks=chunks,
                 dtype=dtype,
                 overwrite=True,
+                chunk_key_encoding=chunk_key_separator,
                 **compressor_args,
             )
         else:
@@ -106,6 +109,7 @@ def create_zarr_array(container_path:str,
                     chunks=chunks,
                     dtype=dtype,
                     overwrite=True,
+                    chunk_key_encoding=chunk_key_separator,
                     **compressor_args,
                 )
             _resize_zarr_array(zarray, shape)
@@ -123,6 +127,7 @@ def create_zarr_array(container_path:str,
                 dtype=dtype,
                 overwrite=True,
                 zarr_format=zarr_format,
+                chunk_key_encoding=chunk_key_separator,
                 **compressor_args,
             )
         elif zarr.storage.contains_array(store):
@@ -138,8 +143,8 @@ def create_zarr_array(container_path:str,
                 chunks=chunks,
                 dtype=dtype,
                 zarr_format=zarr_format,
+                chunk_key_encoding=chunk_key_separator,
                 **compressor_args,
-                dimension_separator='/',
             )
         zarray.attrs.update(array_attrs)
         return zarray
