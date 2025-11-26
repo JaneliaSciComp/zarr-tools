@@ -24,8 +24,10 @@ def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
     Combine arrays
     """
     block_slices = slices_from_chunks(normalize_chunks(output_zarray.chunks, shape=output_zarray.shape))
-    partitioned_block_slices = tuple(partition_all(partition_size, block_slices))
-    logger.info(f'Partition {len(block_slices)} into {len(partitioned_block_slices)} partitions of up to {partition_size} blocks')
+    spatial_block_slices = list(set(s[-3:] for s in block_slices))
+
+    partitioned_block_slices = tuple(partition_all(partition_size, spatial_block_slices))
+    logger.info(f'Partition {len(block_slices)} ({len(spatial_block_slices)} spatial blocks) into {len(partitioned_block_slices)} partitions of up to {partition_size} blocks')
 
     nblocks = 0
 
@@ -46,7 +48,7 @@ def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
         logger.info(f'Finished partition {idx} - copied {npartition_blocks} blocks')
         nblocks = nblocks + npartition_blocks
 
-    logger.info(f'Finished all {len(partitioned_block_slices)} - copied {nblocks} blocks')
+    logger.info(f'Finished all {len(partitioned_block_slices)} partitions - copied {nblocks} blocks')
     return nblocks
 
 
@@ -55,7 +57,7 @@ def _copy_blocks(coords, source_arrays=[], output=[]):
     # the input arrays are all 3-D for now
     # this package cannot handle inputs other than 3-D
     nblocks = 0
-    input_spatial_coords =coords[-3:] 
+    input_spatial_coords = coords[-3:] 
     for (_, _, arr, ch, tp) in source_arrays:
         if tp is not None:
             output_block_coords = (tp, ch) + input_spatial_coords
