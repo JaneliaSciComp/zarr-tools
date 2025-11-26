@@ -98,12 +98,22 @@ def _define_args():
     input_args.add_argument('--output-type', '--output_type',
                             type=str,
                             dest='output_type',
-                            help='Output type')
+                            help='Zarr array value type (uint16, int32, uint32, ...)')
     input_args.add_argument('--overwrite',
                             dest='overwrite',
                             default=False,
                             action='store_true',
                             help='Overwrite container if it exists')
+    input_args.add_argument('--zarr-format', '--zarr_format',
+                            type=int,
+                            default=2,
+                            dest='zarr_format',
+                            help='Zarr format (2 or 3 for v2 or v3)')
+    input_args.add_argument('--ome-version', '--ome_version',
+                            type=str,
+                            default='0.4',
+                            dest='ome_version',
+                            help='OME version')
 
     input_args.add_argument('--compressor',
                             default='zstd',
@@ -241,7 +251,8 @@ def _run_combine_arrays(args):
         ome_metadata = _create_ome_metadata(args.output_subpath,
                                             axes,
                                             voxel_spacing, 
-                                            (4 if max_tp is None else 5))
+                                            (4 if max_tp is None else 5),
+                                            default_version=args.ome_version)
         if args.as_labels:
             logger.info(f'Create labels group: {args.output_subpath}')
             create_labels(args.output, args.output_subpath)
@@ -260,7 +271,8 @@ def _run_combine_arrays(args):
             compressor=args.compressor,
             compression_opts=args.compression_opts,
             overwrite=args.overwrite,
-            parent_array_attrs=ome_metadata
+            parent_array_attrs=ome_metadata,
+            zarr_format=args.zarr_format
         )
         logger.info(f'Combine {input_zarrays}')
         combine_arrays(input_zarrays, output_zarray, dask_client,
@@ -270,7 +282,9 @@ def _run_combine_arrays(args):
     dask_client.close()
 
 
-def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default_unit='micrometer'):
+def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims,
+                         default_version='0.4',
+                         default_unit='micrometer'):
     if not dataset_path:
         relative_dataset_path = ''
     else:
@@ -332,7 +346,7 @@ def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims, default
                 'datasets': [
                     dataset
                 ],
-                'version': '0.4',
+                'version': default_version,
                 'name': '/',
             }
         ]

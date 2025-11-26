@@ -61,6 +61,11 @@ def _copy_blocks(coords, source_arrays=[], output=[]):
             output_block_coords = (tp, ch) + input_spatial_coords
         else:
             output_block_coords = (ch,) + input_spatial_coords
-        output[output_block_coords] = arr[input_spatial_coords]
-        nblocks = nblocks + 1
+
+        try:
+            output[output_block_coords] = arr[input_spatial_coords]
+            nblocks = nblocks + 1
+        except Exception as e:
+            logger.exception(f'Error copying from {input_spatial_coords} to {output_block_coords}', e)
+            raise e
     return nblocks

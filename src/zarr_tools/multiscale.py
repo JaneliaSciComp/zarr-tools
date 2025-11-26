@@ -33,14 +33,14 @@ def create_multiscale(multiscale_group: zarr.Group,
     dataset_regex = re.compile(dataset_pattern)
     pyramid_attrs = get_multiscales(group_attrs)
 
-    source_dataset_shape = group_attrs.get('current_dataset_shape', [])
+    source_dataset_shape = group_attrs.get('array_shape', [])
     source_dataset_level = int(dataset_regex.match(dataset_path).group(1))
     source_dataset_scale, source_dataset_translation = get_transformations_from_datasetpath(
         pyramid_attrs, dataset_path,
         default_scale=(1,) * len(source_dataset_shape),
         default_translation=(0,) * len(source_dataset_shape),
     )
-    dataset_blocksize = group_attrs.get('current_dataset_blocksize', [])
+    dataset_blocksize = group_attrs.get('array_chunksize', [])
     logger.info((
         f'Start/Final dataset shapes extracted from {group_attrs}: '
         f'{source_dataset_shape}/{dataset_blocksize} '
@@ -109,7 +109,8 @@ def create_multiscale(multiscale_group: zarr.Group,
         current_level_translation = tuple([round((s0 * (dsf / 2 - 0.5)) + tr0, 3) if dsf > 1 else tr0
                                                  for (s0, dsf, tr0)
                                                  in zip(level0_scale, absolute_scaling_factors, level0_translation)])
-        current_level_shape = (dataset_shape / absolute_scaling_factors).astype(int)
+        current_level_shape_array = (dataset_shape / absolute_scaling_factors).astype(int)
+        current_level_shape = tuple(map(int, current_level_shape_array))
 
         logger.info((
             f'Level: {new_level}, '
@@ -132,14 +133,13 @@ def create_multiscale(multiscale_group: zarr.Group,
             f'pyramid_attrs -> {pyramid_attrs} '
         ))
 
-        new_dataset_arr = multiscale_group.require_dataset(
+        new_dataset_arr = multiscale_group.require_array(
             new_level_path,
             shape=current_level_shape,
             chunks=dataset_blocksize,
             dtype=dataset_arr.dtype,
             compressor=dataset_arr.compressor,
             fill_value=dataset_arr.fill_value,
-            dimension_separator='/',
             exact=True,
         )
 

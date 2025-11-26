@@ -1,5 +1,4 @@
 import logging
-import numcodecs as codecs
 import os
 import re
 import zarr
@@ -14,26 +13,60 @@ from typing import List,Tuple
 logger = logging.getLogger(__name__)
 
 
+def _get_compressor(compressor: str | None, compression_opts: dict, zarr_format: int):
+    logger.info(f'Get compressor: {compressor}: {compression_opts} for zarr format {zarr_format}')
+    if compressor is None:
+        return None
+
+    if zarr_format == 3:
+        import zarr.codecs as zv3codecs
+
+        compressor_map = {
+            'packbits': zv3codecs.PackBits,
+            'zstd': zv3codecs.Zstd,
+            'zlib': zv3codecs.Zlib,
+            'gzip': zv3codecs.GZip,
+            'bz2': zv3codecs.BZ2,
+            'lzma': zv3codecs.LZMA,
+            'lz4': zv3codecs.LZ4,
+            'blosc': zv3codecs.Blosc,
+        }
+        codec_cls = compressor_map.get(compressor.lower())
+        if codec_cls is None:
+            raise ValueError(f'Unsupported compressor {compressor} for zarr format {zarr_format}')
+        return codec_cls(**compression_opts)
+    else:
+        import numcodecs as zv2codecs
+
+        return zv2codecs.get_codec({'id': compressor, **compression_opts})
+
+
+def _compressor_kwargs(codec, zarr_format: int):
+    if zarr_format == 3:
+        # zarr v3 expects a tuple of BytesBytesCodec (or an empty tuple)
+        compressors = None if codec is None else (codec,)
+        return {'compressors': compressors}
+    else:
+        return {'compressor': codec}
+
+
 def create_zarr_array(container_path:str,
                       array_subpath:str,
                       shape:Tuple[int],
                       chunks:Tuple[int],
                       dtype:str,
-                      store_name:str|None=None,
                       compressor:str|None=None,
                       compression_opts:dict={},
                       overwrite=False,
                       parent_array_attrs={},
+                      zarr_format=2, # default zarr v2 format
                       **array_attrs):
 
     real_container_path = os.path.realpath(container_path)
-    if store_name == 'n5':
-        store = zarr.N5Store(real_container_path)
-    else:
-        store = zarr.DirectoryStore(real_container_path, dimension_separator='/')
+    store = zarr.storage.LocalStore(real_container_path)
 
-    codec = (None if compressor is None
-             else codecs.get_codec({"id": compressor, **compression_opts}))
+    codec = _get_compressor(compressor, compression_opts, zarr_format)
+    compressor_args = _compressor_kwargs(codec, zarr_format)
 
     if array_subpath:
         logger.info((
@@ -43,39 +76,37 @@ def create_zarr_array(container_path:str,
             f'array attrs: {array_attrs} '
         ))
 
-        root_group = zarr.open_group(store=store, mode='a')
+        root_group = zarr.open_group(store=store, mode='a', zarr_format=zarr_format)
         if overwrite:
             # create an array dataset no matter whether it exists or not
             current_shape = shape
-            zarray = root_group.create_dataset(
+            zarray = root_group.create_array(
                 array_subpath,
-                shape = current_shape,
+                shape=current_shape,
                 chunks=chunks,
                 dtype=dtype,
                 overwrite=True,
-                compressor=codec,
-                dimension_separator='/',
+                **compressor_args,
             )
         else:
             if array_subpath in root_group:
-                # if the dataset already exists, get its shape
+                # if the array already exists, get its shape
                 zarray = root_group[array_subpath]
                 current_shape = zarray.shape
                 logger.info((
-                    f'Dataset {container_path}:{array_subpath} '
+                    f'Array {container_path}:{array_subpath} '
                     f'already exists with shape {current_shape} '
                 ))
             else:
-                # this is a new dataset 
+                # this is a new array
                 current_shape = shape
-                zarray = root_group.create_dataset(
+                zarray = root_group.create_array(
                     array_subpath,
-                    shape = current_shape, # use the current shape
+                    shape=current_shape, # use the current shape
                     chunks=chunks,
                     dtype=dtype,
                     overwrite=True,
-                    compressor=codec,
-                    dimension_separator='/',
+                    **compressor_args,
                 )
             _resize_zarr_array(zarray, shape)
             _update_parent_attrs(root_group, array_subpath, parent_array_attrs)
@@ -85,14 +116,14 @@ def create_zarr_array(container_path:str,
         # the zarr container is the array
         if overwrite:
             current_shape = shape
-            zarray = zarr.create(
+            zarray = zarr.create_array(
                 store=store,
-                shape = current_shape,
+                shape=current_shape,
                 chunks=chunks,
                 dtype=dtype,
                 overwrite=True,
-                compressor=codec,
-                dimension_separator='/',
+                zarr_format=zarr_format,
+                **compressor_args,
             )
         elif zarr.storage.contains_array(store):
             # the array already exists
@@ -101,12 +132,13 @@ def create_zarr_array(container_path:str,
             _resize_zarr_array(zarray, shape)
         else:
             current_shape = shape
-            zarray = zarr.create(
+            zarray = zarr.create_array(
                 store=store,
-                shape = current_shape,
+                shape=current_shape,
                 chunks=chunks,
                 dtype=dtype,
-                compressor=codec,
+                zarr_format=zarr_format,
+                **compressor_args,
                 dimension_separator='/',
             )
         zarray.attrs.update(array_attrs)
@@ -130,20 +162,19 @@ def create_zarr_group(container_path:str, group_subpath:str, group_attrs:dict={}
     return g
 
 
-def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r',
-              dimension_separator:str|None=None):
+def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r'):
     try:
-        zarr_container, zarr_subpath = _get_data_store(data_path, data_subpath, data_store_name, dimension_separator=dimension_separator)
+        zarr_container, zarr_subpath = _get_data_store(data_path, data_subpath, data_store_name)
 
         logger.info(f'Open zarr container: {zarr_container} ({zarr_subpath}), mode: {mode}')
         data_container = zarr.open(store=zarr_container, mode=mode)
-        multiscales_group, dataset_subpath, multiscales_attrs  = _lookup_ome_multiscales(data_container, zarr_subpath)
+        multiscales_zgroup, dataset_subpath, multiscales_attrs  = _lookup_ome_multiscales(data_container, zarr_subpath)
 
-        if multiscales_group is not None:
+        if multiscales_zgroup is not None:
             logger.info((
-                f'Open OME ZARR {zarr_container.path}:{zarr_subpath} '
+                f'Open OME ZARR {zarr_container.root}:{zarr_subpath} '
             ))
-            return _open_ome_zarr(multiscales_group, dataset_subpath, multiscales_attrs)
+            return _open_ome_zarr(multiscales_zgroup, dataset_subpath, multiscales_attrs)
         else:
             logger.info(f'Open Simple ZARR {data_container.path}:{zarr_subpath}')
             return _open_simple_zarr(data_container, zarr_subpath)
@@ -152,7 +183,7 @@ def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mo
         raise e
 
 
-def _get_data_store(data_path, data_subpath, data_store_name, dimension_separator=None):
+def _get_data_store(data_path, data_subpath, data_store_name):
     """
     This methods adjusts the container and dataset paths such that
     the container paths always contains a .attrs file
@@ -187,7 +218,7 @@ def _get_data_store(data_path, data_subpath, data_store_name, dimension_separato
     new_subpath = '/'.join(dataset_comps[dataset_comps_index:])
 
     logger.debug(f'Found zarr container at {container_path}:{new_subpath}')
-    return zarr.DirectoryStore(container_path, dimension_separator=dimension_separator), new_subpath
+    return zarr.storage.LocalStore(container_path), new_subpath
 
 
 def _lookup_ome_multiscales(data_container, data_subpath):
@@ -218,7 +249,7 @@ def _lookup_ome_multiscales(data_container, data_subpath):
         return None, None, {}
 
 
-def _open_ome_zarr(multiscales_group, dataset_subpath, attrs):
+def _open_ome_zarr(multiscales_zgroup, dataset_subpath, attrs):
 
     multiscale_metadata = get_multiscales(attrs)
 
@@ -226,8 +257,8 @@ def _open_ome_zarr(multiscales_group, dataset_subpath, attrs):
 
     if dataset_metadata is None:
         logger.info(f'No dataset was found using {dataset_subpath}')
-        if dataset_subpath in multiscales_group:
-            logger.debug(f'Dataset {dataset_subpath} found in the {multiscales_group.path} container but not in metadata')
+        if dataset_subpath in multiscales_zgroup:
+            logger.debug(f'Dataset {dataset_subpath} found in the {multiscales_zgroup.path} container but not in metadata')
             # lookup a dataset in the metadata that could potentially have the same scale
             # and use the transformations from that one
             dataset_comps = [c for c in dataset_subpath.split('/') if c]
@@ -250,15 +281,15 @@ def _open_ome_zarr(multiscales_group, dataset_subpath, attrs):
 
     dataset_path = dataset_metadata.get('path')
     logger.info(f'Get dataset using path: {dataset_path}')
-    a = multiscales_group[dataset_path] if dataset_path else multiscales_group
+    za = multiscales_zgroup[dataset_path] if dataset_path else multiscales_zgroup
     global_scale, global_translation = get_global_transformations(multiscale_metadata)
     dataset_scale, dataset_translation = get_dataset_transformations(dataset_metadata)
-    _set_array_attrs(attrs, dataset_path, a.shape, a.dtype, a.chunks,
+    _set_array_attrs(attrs, dataset_path, za.shape, za.dtype, za.chunks,
                      axes=get_axes_from_multiscales(multiscale_metadata),
                      global_scale=global_scale, global_translation=global_translation,
                      dataset_scale=dataset_scale, dataset_translation=dataset_translation)
 
-    return multiscales_group, attrs, dataset_path
+    return multiscales_zgroup, attrs, dataset_path
 
 
 def _extract_numeric_comp(v):
@@ -300,23 +331,27 @@ def _open_simple_zarr(data_container, data_subpath):
 
 
 def _set_array_attrs(attrs, subpath, shape, dtype, chunks,
-                     axes=None, global_scale=None, global_translation=None,
-                     dataset_scale=None, dataset_translation=None):
+                     axes=None, dataset_scale=None, dataset_translation=None,
+                     global_scale=None, global_translation=None,):
     """
     Add useful datasets attributes from the array attributes:
     shape, ndims, data_type, chunksize
     """
     attrs.update({
-        'global_scale': global_scale,
-        'global_translation': global_translation,
-        'current_axes': axes,
-        'current_dataset_path': subpath,
-        'current_dataset_shape': shape,
-        'current_dataset_dims': len(shape),
-        'current_dataset_dtype': dtype.name,
-        'current_dataset_blocksize': chunks,
-        'current_dataset_scale': dataset_scale,
-        'current_dataset_translation': dataset_translation,
+        'array_axes': axes,
+        'array_subpath': subpath,
+        'array_shape': shape,
+        'array_ndims': len(shape),
+        'array_dtype': dtype.name,
+        'array_chunksize': chunks,
+        'array_transforms': {
+            'scale': dataset_scale,
+            'translation': dataset_translation,
+        },
+        'global_transforms': {
+            'scale': global_scale,
+            'translation': global_translation,
+        }
     })
     return attrs
 
