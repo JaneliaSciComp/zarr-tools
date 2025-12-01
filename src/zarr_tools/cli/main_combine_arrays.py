@@ -6,7 +6,8 @@ from dask.distributed import (Client, LocalCluster)
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from zarr_tools.ngff.ngff_utils import (get_axes_from_multiscales, get_multiscales, get_spatial_voxel_spacing)
+from zarr_tools.ngff.ngff_utils import (create_ome_metadata, get_axes_from_multiscales,
+                                        get_multiscales, get_spatial_voxel_spacing)
 from zarr_tools.combine_arrays import combine_arrays
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
@@ -248,11 +249,13 @@ def _run_combine_arrays(args):
         if voxel_spacing is None:
             voxel_spacing = list(args.voxel_spacing[::-1])
 
-        ome_metadata = _create_ome_metadata(args.output_subpath,
-                                            axes,
-                                            voxel_spacing, 
-                                            (4 if max_tp is None else 5),
-                                            default_version=args.ome_version)
+        voxel_translation = [0, 0, 0]
+        ome_metadata = create_ome_metadata(args.output_subpath,
+                                           axes,
+                                           voxel_spacing,
+                                           voxel_translation,
+                                           (4 if max_tp is None else 5),
+                                           default_version=args.ome_version)
         if args.as_labels:
             logger.info(f'Create labels group: {args.output_subpath}')
             create_labels(args.output, args.output_subpath, args.zarr_format)
@@ -280,79 +283,6 @@ def _run_combine_arrays(args):
         logger.info(f'Finished combining all arrays into {args.output}:{args.output_subpath}!')
 
     dask_client.close()
-
-
-def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims,
-                         default_version='0.4',
-                         default_unit='micrometer'):
-    if not dataset_path:
-        relative_dataset_path = ''
-    else:
-        # ignore leading '/'
-        path_comps = [p for p in PurePosixPath(dataset_path).parts if p not in ('', '/')]
-        relative_dataset_path = path_comps[-1]
-
-    scale = ([1] if final_ndims == 4 else [1, 1]) + voxel_spacing
-    translation = [0] * final_ndims
-    if axes is None:
-        multiscale_axes = [
-            {
-                "name": "z",
-                "type": "space",
-                "unit": default_unit,
-            },
-            {
-                "name": "y",
-                "type": "space",
-                "unit": default_unit,
-            },
-            {
-                "name": "x",
-                "type": "space",
-                "unit": default_unit,
-            },
-        ]
-    else:
-        multiscale_axes = axes[-3:]
-
-    multiscale_axes.insert(0, {
-        "name": "c",
-        "type": "channel",
-    })
-
-    if final_ndims > 4:
-        multiscale_axes.insert(0, {
-            "name": "t",
-            "type": "time",
-        })
-
-    dataset = {
-        'path': relative_dataset_path,
-        'coordinateTransformations': [
-            {
-                'type': 'scale',
-                'scale': scale,
-            },
-            {
-                'type': 'translation',
-                'translation' : translation
-            }
-        ]
-    }
-    multiscales = {
-        'multiscales': [
-            {
-                'axes': multiscale_axes,
-                'datasets': [
-                    dataset
-                ],
-                'version': default_version,
-                'name': '/',
-            }
-        ]
-    }
-
-    return multiscales
 
 
 def create_labels(container_path, labels_dataset_path, zarr_format):
