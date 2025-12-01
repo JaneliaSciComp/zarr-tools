@@ -151,13 +151,15 @@ def create_zarr_array(container_path:str,
 
 
 
-def create_zarr_group(container_path:str, group_subpath:str, group_attrs:dict={}, store_name:str|None=None):
+def create_zarr_group(container_path:str, group_subpath:str, 
+                      store_name:str|None=None,
+                      zarr_format:int=2):
     real_container_path = os.path.realpath(container_path)
     if store_name == 'n5':
         store = zarr.N5Store(real_container_path)
     else:
-        store = zarr.DirectoryStore(real_container_path, dimension_separator='/')
-    root_group = zarr.open_group(store=store, mode='a')
+        store = zarr.storage.LocalStore(real_container_path)
+    root_group = zarr.open_group(store=store, mode='a', zarr_format=zarr_format)
     if group_subpath in root_group:
         # get group
         g = root_group[group_subpath]

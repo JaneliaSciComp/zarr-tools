@@ -255,7 +255,7 @@ def _run_combine_arrays(args):
                                             default_version=args.ome_version)
         if args.as_labels:
             logger.info(f'Create labels group: {args.output_subpath}')
-            create_labels(args.output, args.output_subpath)
+            create_labels(args.output, args.output_subpath, args.zarr_format)
 
 
         logger.info((
@@ -355,7 +355,7 @@ def _create_ome_metadata(dataset_path, axes, voxel_spacing, final_ndims,
     return multiscales
 
 
-def create_labels(container_path, labels_dataset_path):
+def create_labels(container_path, labels_dataset_path, zarr_format):
     if not labels_dataset_path:
         raise ValueError('Invalid OME labels subset:')
 
@@ -370,7 +370,7 @@ def create_labels(container_path, labels_dataset_path):
             'excluding the multiscale, e.g. labels/soma/0 or labels/nuclei/0 '
         ))
 
-    labels_group = create_zarr_group(container_path, default_labels_group)
+    labels_group = create_zarr_group(container_path, default_labels_group, zarr_format=zarr_format)
     labels_list = labels_group.attrs.get('labels', [])
     labels_list.append('/'.join(label_path_comps))
     labels_group.attrs.update({
