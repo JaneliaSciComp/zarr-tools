@@ -17,9 +17,9 @@ from xarray_multiscale import windowed_mean, windowed_mode
 logger = logging.getLogger(__name__)
 
 
-def create_multiscale(multiscale_group: zarr.Group,
-                      group_attrs: dict,
-                      dataset_path: str|None,
+def create_multiscale(dataset_store: zarr.storage.StoreLike,
+                      dataset_path: str,
+                      dataset_attrs: dict,
                       dataset_pattern: str,
                       data_type: str,
                       antialiasing:bool,
@@ -29,20 +29,24 @@ def create_multiscale(multiscale_group: zarr.Group,
     """
     Create a multiscale pyramid in the given Zarr group.
     """
-    logger.info(f'Create multiscale for dataset at {multiscale_group.path}:{dataset_path}')
+    logger.info(f'Create multiscale for dataset {dataset_attrs}')
     dataset_regex = re.compile(dataset_pattern)
-    pyramid_attrs = get_multiscales(group_attrs)
+    pyramid_attrs = get_multiscales(dataset_attrs)
+    source_dataset_shape = dataset_attrs.get('array_shape', [])
+    dataset_regex_match = dataset_regex.match(dataset_path)
 
-    source_dataset_shape = group_attrs.get('array_shape', [])
-    source_dataset_level = int(dataset_regex.match(dataset_path).group(1))
+    if dataset_regex_match is None:
+        raise ValueError(f'Dataset path {dataset_path} does not match the scaled dataset regex: {dataset_pattern}')
+
+    source_dataset_level = int(dataset_regex_match.group(1))
     source_dataset_scale, source_dataset_translation = get_transformations_from_datasetpath(
         pyramid_attrs, dataset_path,
         default_scale=(1,) * len(source_dataset_shape),
         default_translation=(0,) * len(source_dataset_shape),
     )
-    dataset_blocksize = group_attrs.get('array_chunksize', [])
+    dataset_blocksize = dataset_attrs.get('array_chunksize', [])
     logger.info((
-        f'Start/Final dataset shapes extracted from {group_attrs}: '
+        f'Start/Final dataset shapes extracted from {dataset_attrs}: '
         f'{source_dataset_shape}/{dataset_blocksize} '
     ))
 
@@ -77,7 +81,14 @@ def create_multiscale(multiscale_group: zarr.Group,
         f'level0 translation: {level0_translation} '
     ))
 
-    dataset_arr = multiscale_group[dataset_path] if dataset_path else multiscale_group
+    parent_dataset_path = '/'.join(dataset_path.rstrip('/').split('/')[0:-1]).lstrip('/')
+    if parent_dataset_path == dataset_path:
+        # this happens only if the zarr container is actually a zarr array
+        raise ValueError(f'Cannot generate multiscale pyramid for a top level zarr array - dataset_path is {dataset_path}')
+
+    # open the multiscale group in append mode
+    multiscale_group = zarr.open_group(store=dataset_store, path=parent_dataset_path, mode='a')
+    dataset_arr = zarr.open_array(store=dataset_store, path=dataset_path)
     current_level_shape = dataset_shape = dataset_arr.shape
 
     def next_level(match):
@@ -186,9 +197,9 @@ def create_multiscale(multiscale_group: zarr.Group,
 
 
 def _get_downsample_factors(level:int,
-                            data_shape:Tuple[int],
-                            target_shape:Tuple[int],
-                            data_spacing:Tuple[float],
+                            data_shape:Tuple[int, ...],
+                            target_shape:Tuple[int, ...],
+                            data_spacing:Tuple[float, ...],
                             spatial_axes_mask:List[bool],
                             anisotropy_threshold:float=0.1):
 

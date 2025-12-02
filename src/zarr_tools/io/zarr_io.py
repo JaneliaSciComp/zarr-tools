@@ -8,6 +8,7 @@ from ..ngff.ngff_utils import (get_axes, get_dataset, get_datasets,
                                get_axes_from_multiscales, get_global_transformations,
                                get_dataset_transformations)
 from typing import List,Tuple
+from urllib.parse import urlparse
 
 
 logger = logging.getLogger(__name__)
@@ -169,11 +170,11 @@ def create_zarr_group(container_path:str, group_subpath:str,
     return g
 
 
-def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r'):
+def open_zarr_store(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r') -> Tuple[zarr.storage.StoreLike, dict]:
     try:
         zarr_container, zarr_subpath = _get_data_store(data_path, data_subpath, data_store_name)
 
-        logger.info(f'Open zarr container: {zarr_container} ({zarr_subpath}), mode: {mode}')
+        logger.info(f'Open zarr container: {zarr_container} ({zarr_subpath})')
         data_container = zarr.open(store=zarr_container, mode=mode)
         multiscales_zgroup, dataset_subpath, multiscales_attrs  = _lookup_ome_multiscales(data_container, zarr_subpath)
 
@@ -181,10 +182,10 @@ def open_zarr(data_path:str, data_subpath:str, data_store_name:str|None=None, mo
             logger.info((
                 f'Open OME ZARR {zarr_container.root}:{zarr_subpath} '
             ))
-            return _open_ome_zarr(multiscales_zgroup, dataset_subpath, multiscales_attrs)
+            return _open_ome_zarr_store(multiscales_zgroup, dataset_subpath, multiscales_attrs)
         else:
             logger.info(f'Open Simple ZARR {data_container.path}:{zarr_subpath}')
-            return _open_simple_zarr(data_container, zarr_subpath)
+            return _open_simple_zarr_store(data_container, zarr_subpath)
     except Exception as e:
         logger.error(f'Error opening {data_path}:{data_subpath} {e}')
         raise e
@@ -256,7 +257,7 @@ def _lookup_ome_multiscales(data_container, data_subpath):
         return None, None, {}
 
 
-def _open_ome_zarr(multiscales_zgroup, dataset_subpath, attrs):
+def _open_ome_zarr_store(multiscales_zgroup, dataset_subpath, attrs) -> Tuple[zarr.storage.StoreLike, dict]:
 
     multiscale_metadata = get_multiscales(attrs)
 
@@ -291,12 +292,12 @@ def _open_ome_zarr(multiscales_zgroup, dataset_subpath, attrs):
     za = multiscales_zgroup[dataset_path] if dataset_path else multiscales_zgroup
     global_scale, global_translation = get_global_transformations(multiscale_metadata)
     dataset_scale, dataset_translation = get_dataset_transformations(dataset_metadata)
-    _set_array_attrs(attrs, dataset_path, za.shape, za.dtype, za.chunks,
+    _set_array_attrs(attrs, za.store, za.store_path, za.shape, za.dtype, za.chunks,
                      axes=get_axes_from_multiscales(multiscale_metadata),
                      global_scale=global_scale, global_translation=global_translation,
                      dataset_scale=dataset_scale, dataset_translation=dataset_translation)
 
-    return multiscales_zgroup, attrs, dataset_path
+    return za.store, attrs
 
 
 def _extract_numeric_comp(v):
@@ -307,7 +308,7 @@ def _extract_numeric_comp(v):
         raise ValueError(f'Invalid component: {v}')
 
 
-def _open_simple_zarr(data_container, data_subpath):
+def _open_simple_zarr_store(data_container, data_subpath) -> Tuple[zarr.storage.StoreLike, dict]:
     if not data_subpath or data_subpath == '.':
         # the input parameter is an array
         shape = data_container.shape
@@ -316,8 +317,8 @@ def _open_simple_zarr(data_container, data_subpath):
 
         attrs = data_container.attrs.asdict()
 
-        _set_array_attrs(attrs, data_subpath, shape, dtype, chunks)
-        return data_container, attrs, ''
+        _set_array_attrs(attrs, data_container.store, data_container.store_path, shape, dtype, chunks)
+        return data_container.store, attrs
     else:
         a = data_container[data_subpath]
         shape = a.shape
@@ -333,20 +334,25 @@ def _open_simple_zarr(data_container, data_subpath):
 
         attrs = parent_group.attrs.asdict()
 
-        _set_array_attrs(attrs, data_subpath, shape, dtype, chunks)
-        return parent_group, attrs, (dataset_comps[-1] if len(dataset_comps) > 0 else '')
+        _set_array_attrs(attrs, a.store, a.store_path, shape, dtype, chunks)
+        return a.store, attrs
 
 
-def _set_array_attrs(attrs, subpath, shape, dtype, chunks,
+def _set_array_attrs(attrs, store, array_store_path, shape, dtype, chunks,
                      axes=None, dataset_scale=None, dataset_translation=None,
                      global_scale=None, global_translation=None,):
     """
     Add useful datasets attributes from the array attributes:
     shape, ndims, data_type, chunksize
     """
+    array_store_path_str = str(array_store_path) # get store path as a string
+    container_path = urlparse(str(store)).path
+    array_subpath = urlparse(array_store_path_str).path.removeprefix(container_path).strip('/')
+
     attrs.update({
         'array_axes': axes,
-        'array_subpath': subpath,
+        'array_path': array_store_path_str,
+        'array_subpath': array_subpath,
         'array_shape': shape,
         'array_ndims': len(shape),
         'array_dtype': dtype.name,

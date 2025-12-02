@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import zarr
 
 from dask.distributed import (Client, LocalCluster)
 from dataclasses import dataclass
@@ -11,7 +12,8 @@ from zarr_tools.ngff.ngff_utils import (create_ome_metadata, get_axes_from_multi
 from zarr_tools.combine_arrays import combine_arrays
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
-from zarr_tools.io.zarr_io import (create_zarr_array, create_zarr_group, open_zarr)
+from zarr_tools.io.zarr_io import (create_zarr_array, create_zarr_group, 
+                                   open_zarr_store)
 
 
 logger:logging.Logger
@@ -203,8 +205,9 @@ def _run_combine_arrays(args):
     for ap in args.array_params:
         logger.info(f'Add array: {ap}')
         array_container = ap.sourcePath if ap.sourcePath else args.input
-        zgroup, zattrs, zsubpath = open_zarr(array_container, ap.sourceSubpath, mode='r')
-        zarray = zgroup[zsubpath] if zsubpath else zgroup
+        zstore, zattrs = open_zarr_store(array_container, ap.sourceSubpath, mode='r')
+        zarray_subpath = zattrs['array_subpath']
+        zarray = zarr.open_array(store=zstore, path=zarray_subpath)
 
         current_voxel_spacing = get_spatial_voxel_spacing(zattrs)
         if voxel_spacing is None:
@@ -232,7 +235,7 @@ def _run_combine_arrays(args):
             elif ap.targetTp > max_tp:
                 max_tp = ap.targetTp
         
-        input_zarrays.append((array_container, zsubpath, zarray, ap.targetCh, ap.targetTp))
+        input_zarrays.append((array_container, zarray_subpath, zarray, ap.targetCh, ap.targetTp))
 
     xyz_output_chunks = args.output_chunks if args.output_chunks else (128,) * 3
 

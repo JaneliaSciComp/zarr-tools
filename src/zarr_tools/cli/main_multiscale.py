@@ -6,7 +6,7 @@ from dask.distributed import (Client, LocalCluster)
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
 from zarr_tools.multiscale import create_multiscale
-from zarr_tools.io.zarr_io import open_zarr
+from zarr_tools.io.zarr_io import open_zarr_store
 
 
 logger:logging.Logger
@@ -97,13 +97,18 @@ def _run_multiscale(args):
                                           worker_cpus=args.worker_cpus)
     dask_client.register_plugin(worker_config, name='WorkerConfig')
 
-    dataset_container, dataset_attrs, dataset_path = open_zarr(
+    dataset_store, dataset_attrs = open_zarr_store(
         args.input, args.input_subpath, mode='a'
     )
 
     partition_size = args.partition_size if args.partition_size > 0 else 1
+    dataset_subpath = dataset_attrs['array_subpath']
     dataset_pattern = args.dataset_pattern if args.dataset_pattern else '.*(\\d+?)'
-    create_multiscale(dataset_container, dataset_attrs, dataset_path, dataset_pattern,
+    logger.info(f'Generate multiscale for {dataset_store}:{dataset_subpath}')
+    create_multiscale(dataset_store,
+                      dataset_subpath,
+                      dataset_attrs,
+                      dataset_pattern,
                       args.data_type, args.antialiasing,
                       partition_size,
                       args.max_levels,
