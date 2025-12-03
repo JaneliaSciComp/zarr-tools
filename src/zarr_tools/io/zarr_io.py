@@ -354,7 +354,7 @@ def _set_array_attrs(attrs, store, array_store_path, shape, dtype, chunks,
         'array_path': array_store_path_str,
         'array_subpath': array_subpath,
         'array_shape': shape,
-        'array_ndims': len(shape),
+        'array_ndim': len(shape),
         'array_dtype': dtype.name,
         'array_chunksize': chunks,
         'array_transforms': {

@@ -37,7 +37,18 @@ def add_new_dataset(multiscales_attrs, dataset_path, scale_transform, translatio
 
 
 def create_ome_metadata(dataset_path, axes, voxel_spacing, voxel_translation, final_ndims,
-                        default_unit='micrometer', default_version='0.4'):
+                        default_unit='micrometer', ome_version='0.4'):
+    # 0.5 is not compatible with 0.4 but 0.6+ should keep the backward compatibility
+    if ome_version == '0.4':
+        return _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translation,
+                                        final_ndims, default_unit=default_unit)
+    else:
+        return _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translation,
+                                        final_ndims, default_unit=default_unit, ome_version=ome_version)
+
+
+def _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translation, final_ndims,
+                             default_unit='micrometer'):
     if not dataset_path:
         relative_dataset_path = ''
     else:
@@ -99,13 +110,88 @@ def create_ome_metadata(dataset_path, axes, voxel_spacing, voxel_translation, fi
                 'datasets': [
                     dataset
                 ],
-                'version': default_version,
+                'version': '0.4',
                 'name': '/',
             }
         ]
     }
 
     return multiscales
+
+
+def _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translation, final_ndims,
+                             default_unit='micrometer', ome_version='0.5'):
+    if not dataset_path:
+        relative_dataset_path = ''
+    else:
+        # ignore leading '/'
+        path_comps = [p for p in PurePosixPath(dataset_path).parts if p not in ('', '/')]
+        relative_dataset_path = path_comps[-1]
+
+    scale = ([1] if final_ndims == 4 else [1, 1]) + voxel_spacing
+    translation = ([1] if final_ndims == 4 else [1, 1]) + voxel_translation
+    if axes is None:
+        multiscale_axes = [
+            {
+                "name": "z",
+                "type": "space",
+                "unit": default_unit,
+            },
+            {
+                "name": "y",
+                "type": "space",
+                "unit": default_unit,
+            },
+            {
+                "name": "x",
+                "type": "space",
+                "unit": default_unit,
+            },
+        ]
+    else:
+        multiscale_axes = axes[-3:]
+
+    multiscale_axes.insert(0, {
+        "name": "c",
+        "type": "channel",
+    })
+
+    if final_ndims > 4:
+        multiscale_axes.insert(0, {
+            "name": "t",
+            "type": "time",
+        })
+
+    dataset = {
+        'path': relative_dataset_path,
+        'coordinateTransformations': [
+            {
+                'type': 'scale',
+                'scale': scale,
+            },
+            {
+                'type': 'translation',
+                'translation' : translation
+            }
+        ]
+    }
+    multiscales = {
+        'multiscales': [
+            {
+                'axes': multiscale_axes,
+                'datasets': [
+                    dataset
+                ],
+                'name': '/',
+            }
+        ]
+    }
+
+    return {
+        'ome': {
+            'multiscales': multiscales
+        }
+    }
 
 
 def get_axes_from_multiscales(multiscales_attrs):

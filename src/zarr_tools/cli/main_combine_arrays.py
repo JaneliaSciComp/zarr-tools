@@ -258,7 +258,7 @@ def _run_combine_arrays(args):
                                            voxel_spacing,
                                            voxel_translation,
                                            (4 if max_tp is None else 5),
-                                           default_version=args.ome_version)
+                                           ome_version=args.ome_version)
         if args.as_labels:
             logger.info(f'Create labels group: {args.output_subpath}')
             create_labels(args.output, args.output_subpath, args.zarr_format)
