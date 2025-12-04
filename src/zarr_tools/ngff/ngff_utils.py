@@ -213,7 +213,8 @@ def get_spatial_axes(multiscales_attrs) -> Tuple:
     """
     Get the indexes of all space axes.
     """
-    axes = get_axes_from_multiscales(multiscales_attrs)
+    axes = get_axes(multiscales_attrs)
+    print('!!!!!!!! AXES in GET_SPATIAL_AXES: ', axes)
     if axes is not None:
         axes_indexes = []
         for i, axis in enumerate(axes):
