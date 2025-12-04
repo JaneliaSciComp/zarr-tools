@@ -317,7 +317,7 @@ def has_multiscales(attrs):
     return 'multiscales' in attrs
 
 
-def get_spatial_voxel_spacing(attrs) -> List[int] | None:
+def get_spatial_voxel_spacing(attrs) -> List[float] | None:
     multiscales = get_multiscales(attrs)
     dataset = get_dataset_at(multiscales, 0)
     voxel_resolution_values = None
