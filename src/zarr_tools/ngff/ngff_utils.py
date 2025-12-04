@@ -3,7 +3,7 @@ import numpy as np
 
 from ome_zarr_models.v04.image import (Dataset)
 from pathlib import PurePosixPath
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 
 logger = logging.getLogger(__name__)
@@ -209,34 +209,40 @@ def get_axes(attrs):
     return attrs.get('axes', get_axes_from_multiscales(get_multiscales(attrs)))
 
 
-def get_spatial_axes(multiscales_attrs) -> Tuple:
+def get_spatial_axes(attrs) -> Dict[str, int]:
     """
-    Get the indexes of all space axes.
+    Get all spatial axes as a dictionary in which 
+    the key is the axis name and the value is the axis index
+
+    If the attributes are not valid OME metadata the returned value is an empty dictionary
     """
-    axes = get_axes(multiscales_attrs)
+    axes = get_axes(attrs)
+    spatial_axes = {}
+
     if axes is not None:
-        axes_indexes = []
         for i, axis in enumerate(axes):
             if axis.get('type') == 'space' or axis.get('name', '').lower() in ['z', 'y', 'x']:
-                axes_indexes.append(i)
-        return tuple(axes_indexes)
-    else:
-        return ()
+                spatial_axes[axis['name'].lower()] = i
+
+    return spatial_axes
 
 
-def get_non_spatial_axes(multiscales_attrs) -> Tuple:
+def get_non_spatial_axes(multiscales_attrs) -> Dict[str, int]:
     """
-    Get the indexes of all space axes.
+    Get all non-spatial axes (time and channel) as a dictionary in which
+    the key is the axis name and the value is the axis index
+
+    If the attributes are not valid OME metadata the returned value is an empty dictionary
     """
     axes = get_axes(multiscales_attrs)
+    non_spatial_axes = {}
+
     if axes is not None:
-        axes_indexes = []
         for i, axis in enumerate(axes):
             if axis.get('type') != 'space' and axis.get('name', '').lower() not in ['z', 'y', 'x']:
-                axes_indexes.append(i)
-        return tuple(axes_indexes)
-    else:
-        return ()
+                non_spatial_axes[axis['name'].lower()] = i
+
+    return non_spatial_axes
 
 
 def get_dataset_at(multiscale_attrs, dataset_index):
@@ -355,8 +361,7 @@ def get_spatial_voxel_spacing(attrs) -> List[float] | None:
                     pr = np.array(pr_attr['dimensions'])
                     voxel_resolution_values = pr[::-1].tolist()  # list of voxel spacings in zyx order
     else:
-        spatial_axes = get_spatial_axes(multiscales)
-        nspatial_axes = len(spatial_axes) if spatial_axes != () else 3 # default to 3-D
+        nspatial_axes = len(get_spatial_axes(multiscales)) or 3 # default to 3-D
         gscale_array = np.array(global_scale[-nspatial_axes:]) if global_scale else np.array((1,)*nspatial_axes)
         dscale_array = np.array(dataset_scale[-nspatial_axes:]) if dataset_scale else np.array((1,)*nspatial_axes)
         voxel_resolution_values = (gscale_array * dscale_array).tolist()

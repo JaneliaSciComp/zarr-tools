@@ -53,7 +53,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
     spatial_axes = get_spatial_axes(pyramid_attrs)
 
     def is_spatial_axis(axis:int) -> bool:
-        return axis in spatial_axes
+        return axis in spatial_axes.values()
 
     absolute_scaling_factors = np.array([pow(2, source_dataset_level)
                                         if is_spatial_axis(i) else 1
