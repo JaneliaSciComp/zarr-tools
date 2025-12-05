@@ -209,6 +209,17 @@ def get_axes(attrs):
     return attrs.get('axes', get_axes_from_multiscales(get_multiscales(attrs)))
 
 
+def get_axes_dictindex(attrs) -> Dict[str, int]:
+    axes = get_axes(attrs)
+    axes_dict = {}
+
+    if axes is not None:
+        for i, axis in enumerate(axes):
+            axes_dict[axis['name'].lower()] = i
+
+    return axes_dict
+
+
 def get_spatial_axes(attrs) -> Dict[str, int]:
     """
     Get all spatial axes as a dictionary in which 
@@ -216,33 +227,19 @@ def get_spatial_axes(attrs) -> Dict[str, int]:
 
     If the attributes are not valid OME metadata the returned value is an empty dictionary
     """
-    axes = get_axes(attrs)
-    spatial_axes = {}
-
-    if axes is not None:
-        for i, axis in enumerate(axes):
-            if axis.get('type') == 'space' or axis.get('name', '').lower() in ['z', 'y', 'x']:
-                spatial_axes[axis['name'].lower()] = i
-
-    return spatial_axes
+    axes = get_axes_dictindex(attrs)
+    return {a:axes[a] for a in axes if a in ['x', 'y', 'z']}
 
 
-def get_non_spatial_axes(multiscales_attrs) -> Dict[str, int]:
+def get_non_spatial_axes(attrs) -> Dict[str, int]:
     """
     Get all non-spatial axes (time and channel) as a dictionary in which
     the key is the axis name and the value is the axis index
 
     If the attributes are not valid OME metadata the returned value is an empty dictionary
     """
-    axes = get_axes(multiscales_attrs)
-    non_spatial_axes = {}
-
-    if axes is not None:
-        for i, axis in enumerate(axes):
-            if axis.get('type') != 'space' and axis.get('name', '').lower() not in ['z', 'y', 'x']:
-                non_spatial_axes[axis['name'].lower()] = i
-
-    return non_spatial_axes
+    axes = get_axes_dictindex(attrs)
+    return {a:axes[a] for a in axes if a not in ['x', 'y', 'z']}
 
 
 def get_dataset_at(multiscale_attrs, dataset_index):
