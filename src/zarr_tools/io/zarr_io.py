@@ -346,12 +346,12 @@ def _set_array_attrs(attrs, store, array_store_path, shape, dtype, chunks,
     shape, ndims, data_type, chunksize
     """
     array_store_path_str = str(array_store_path) # get store path as a string
-    container_path = urlparse(str(store)).path
-    array_subpath = urlparse(array_store_path_str).path.removeprefix(container_path).strip('/')
+    array_container_path = urlparse(str(store)).path
+    array_subpath = urlparse(array_store_path_str).path.removeprefix(array_container_path).strip('/')
 
     attrs.update({
         'array_axes': axes,
-        'array_path': array_store_path_str,
+        'array_storepath': str(store),
         'array_subpath': array_subpath,
         'array_shape': shape,
         'array_ndim': len(shape),
