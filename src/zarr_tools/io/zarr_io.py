@@ -58,9 +58,9 @@ def create_zarr_array(container_path:str,
                       dtype:str,
                       compressor:str|None=None,
                       compression_opts:dict={},
-                      overwrite=False,
-                      parent_array_attrs={},
-                      zarr_format=2, # default zarr v2 format
+                      overwrite:bool=False,
+                      parent_array_attrs:dict={},
+                      zarr_format:int=2, # default zarr v2 format
                       **array_attrs):
 
     real_container_path = os.path.realpath(container_path)
@@ -104,6 +104,10 @@ def create_zarr_array(container_path:str,
             else:
                 # this is a new array
                 current_shape = shape
+                logger.info((
+                    f'Create new array {container_path}:{array_subpath} '
+                    f'with shape {current_shape} '
+                ))
                 zarray = root_group.create_array(
                     array_subpath,
                     shape=current_shape, # use the current shape

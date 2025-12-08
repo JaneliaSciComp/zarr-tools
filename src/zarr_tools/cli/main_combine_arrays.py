@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os
 import zarr
 
 from dask.distributed import (Client, LocalCluster)
@@ -253,7 +254,8 @@ def _run_combine_arrays(args):
             voxel_spacing = list(args.voxel_spacing[::-1])
 
         voxel_translation = [0, 0, 0]
-        ome_metadata = create_ome_metadata(args.output_subpath,
+        ome_metadata = create_ome_metadata(os.path.basename(args.output),
+                                           args.output_subpath,
                                            axes,
                                            voxel_spacing,
                                            voxel_translation,

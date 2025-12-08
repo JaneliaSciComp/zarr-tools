@@ -36,18 +36,18 @@ def add_new_dataset(multiscales_attrs, dataset_path, scale_transform, translatio
     return multiscales_attrs
 
 
-def create_ome_metadata(dataset_path, axes, voxel_spacing, voxel_translation, final_ndims,
+def create_ome_metadata(name, dataset_path, axes, voxel_spacing, voxel_translation, image_ndims,
                         default_unit='micrometer', ome_version='0.4'):
     # 0.5 is not compatible with 0.4 but 0.6+ should keep the backward compatibility
     if ome_version == '0.4':
-        return _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translation,
-                                        final_ndims, default_unit=default_unit)
+        return _create_ome_metadata_0_4(name, dataset_path, axes, voxel_spacing, voxel_translation,
+                                        image_ndims, default_unit=default_unit)
     else:
-        return _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translation,
-                                        final_ndims, default_unit=default_unit, ome_version=ome_version)
+        return _create_ome_metadata_0_5(name, dataset_path, axes, voxel_spacing, voxel_translation,
+                                        image_ndims, default_unit=default_unit, ome_version=ome_version)
 
 
-def _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translation, final_ndims,
+def _create_ome_metadata_0_4(name, dataset_path, axes, voxel_scale, voxel_translation, image_ndims,
                              default_unit='micrometer'):
     if not dataset_path:
         relative_dataset_path = ''
@@ -56,8 +56,16 @@ def _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translatio
         path_comps = [p for p in PurePosixPath(dataset_path).parts if p not in ('', '/')]
         relative_dataset_path = path_comps[-1]
 
-    scale = ([1] if final_ndims == 4 else [1, 1]) + voxel_spacing
-    translation = ([1] if final_ndims == 4 else [1, 1]) + voxel_translation
+    if len(voxel_scale) < image_ndims:
+        scale = ([1] * (image_ndims - len(voxel_scale))) + voxel_scale
+    else:
+        scale = voxel_scale
+
+    if len(voxel_translation) < image_ndims:
+        translation = ([0] * (image_ndims - len(voxel_translation))) + voxel_translation
+    else:
+        translation = voxel_translation
+
     if axes is None:
         multiscale_axes = [
             {
@@ -84,7 +92,7 @@ def _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translatio
         "type": "channel",
     })
 
-    if final_ndims > 4:
+    if image_ndims > 4:
         multiscale_axes.insert(0, {
             "name": "t",
             "type": "time",
@@ -111,7 +119,7 @@ def _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translatio
                     dataset
                 ],
                 'version': '0.4',
-                'name': '/',
+                'name': name,
             }
         ]
     }
@@ -119,7 +127,7 @@ def _create_ome_metadata_0_4(dataset_path, axes, voxel_spacing, voxel_translatio
     return multiscales
 
 
-def _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translation, final_ndims,
+def _create_ome_metadata_0_5(name, dataset_path, axes, voxel_scale, voxel_translation, image_ndims,
                              default_unit='micrometer', ome_version='0.5'):
     if not dataset_path:
         relative_dataset_path = ''
@@ -128,8 +136,16 @@ def _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translatio
         path_comps = [p for p in PurePosixPath(dataset_path).parts if p not in ('', '/')]
         relative_dataset_path = path_comps[-1]
 
-    scale = ([1] if final_ndims == 4 else [1, 1]) + voxel_spacing
-    translation = ([1] if final_ndims == 4 else [1, 1]) + voxel_translation
+    if len(voxel_scale) < image_ndims:
+        scale = ([1] * (image_ndims - len(voxel_scale))) + voxel_scale
+    else:
+        scale = voxel_scale
+
+    if len(voxel_translation) < image_ndims:
+        translation = ([0] * (image_ndims - len(voxel_translation))) + voxel_translation
+    else:
+        translation = voxel_translation
+
     if axes is None:
         multiscale_axes = [
             {
@@ -156,7 +172,7 @@ def _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translatio
         "type": "channel",
     })
 
-    if final_ndims > 4:
+    if image_ndims > 4:
         multiscale_axes.insert(0, {
             "name": "t",
             "type": "time",
@@ -189,6 +205,7 @@ def _create_ome_metadata_0_5(dataset_path, axes, voxel_spacing, voxel_translatio
 
     return {
         'ome': {
+            'version': ome_version,
             'multiscales': multiscales
         }
     }
