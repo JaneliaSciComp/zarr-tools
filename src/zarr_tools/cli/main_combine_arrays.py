@@ -46,7 +46,7 @@ def _arrayparams(s: str):
     return ZArrayParams(sourcePath, sourceSubpath, targetCh, targetTp)
 
 
-def _as_json(arg:str):
+def _dictfromjson(arg:str):
     if arg:
         return json.loads(arg)
     else:
@@ -124,7 +124,7 @@ def _define_args():
                             help='Zarr array compression algorithm')
     input_args.add_argument('--compression-opts', '--compression_opts',
                             dest='compression_opts',
-                            type=_as_json,
+                            type=_dictfromjson,
                             default={},
                             help='Zarr array compression options')
     
