@@ -48,7 +48,7 @@ def _compressor_kwargs(codec, zarr_format: int):
         compressors = None if codec is None else (codec,)
         return {'compressors': compressors}
     else:
-        return {'compressor': codec}
+        return {'compressors': codec}
 
 
 def create_zarr_array(container_path:str,

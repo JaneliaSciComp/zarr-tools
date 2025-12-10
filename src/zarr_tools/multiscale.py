@@ -33,7 +33,15 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
     dataset_regex = re.compile(dataset_pattern)
     pyramid_attrs = get_multiscales(dataset_attrs)
     source_dataset_shape = dataset_attrs.get('array_shape', [])
-    dataset_regex_match = dataset_regex.match(dataset_path)
+
+    dataset_path_comps = dataset_path.strip('/').split('/')
+    parent_dataset_path = '/'.join(dataset_path_comps[0:-1]).lstrip('/')
+    if parent_dataset_path == dataset_path.strip('/'):
+        # this happens only if the zarr container is actually a zarr array
+        raise ValueError(f'Cannot generate multiscale pyramid for a top level zarr array - dataset_path is {dataset_path}')
+
+    current_dataset_subpath = dataset_path_comps[-1]
+    dataset_regex_match = dataset_regex.match(current_dataset_subpath)
 
     if dataset_regex_match is None:
         raise ValueError(f'Dataset path {dataset_path} does not match the scaled dataset regex: {dataset_pattern}')
@@ -81,14 +89,9 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         f'level0 translation: {level0_translation} '
     ))
 
-    parent_dataset_path = '/'.join(dataset_path.rstrip('/').split('/')[0:-1]).lstrip('/')
-    if parent_dataset_path == dataset_path:
-        # this happens only if the zarr container is actually a zarr array
-        raise ValueError(f'Cannot generate multiscale pyramid for a top level zarr array - dataset_path is {dataset_path}')
-
     # open the multiscale group in append mode
     multiscale_group = zarr.open_group(store=dataset_store, path=parent_dataset_path, mode='a')
-    dataset_arr = zarr.open_array(store=dataset_store, path=dataset_path)
+    dataset_arr = multiscale_group[current_dataset_subpath]
     current_level_shape = dataset_shape = dataset_arr.shape
 
     def next_level(match):
@@ -104,7 +107,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
             break
 
         # all spatial dimensions are larger than the corresponding block size
-        new_level_path = dataset_regex.sub(next_level, dataset_path)
+        new_level_path = dataset_regex.sub(next_level, current_dataset_subpath)
         new_level = int(dataset_regex.match(new_level_path).group(1))
 
         relative_scaling_factors, found = _get_downsample_factors(new_level,
@@ -125,7 +128,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
 
         logger.info((
             f'Level: {new_level}, '
-            f'level dataset path: {new_level_path}, '
+            f'level dataset path: {parent_dataset_path}/{new_level_path}, '
             f'dataset shape (l0 -> l{new_level}): {dataset_shape} -> {current_level_shape} '
             f'level downsampling factors (rel/abs): {relative_scaling_factors} / {absolute_scaling_factors} '
             f'level scale: {current_level_scale} '
@@ -140,7 +143,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         )
 
         logger.info((
-            f'Create new dataset for level {new_level} at {new_level_path} '
+            f'Create new dataset for level {new_level} at {parent_dataset_path}/{new_level_path} '
             f'pyramid_attrs -> {pyramid_attrs} '
         ))
 
@@ -186,7 +189,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
 
             logger.info(f'Finished level {new_level} partition {idx}')
 
-        dataset_path = new_level_path
+        current_dataset_subpath = new_level_path
         dataset_arr = new_dataset_arr
         nlevels = nlevels + 1
 

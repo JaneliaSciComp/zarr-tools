@@ -104,7 +104,7 @@ def _run_multiscale(args):
     partition_size = args.partition_size if args.partition_size > 0 else 1
     dataset_subpath = dataset_attrs['array_subpath']
     dataset_pattern = args.dataset_pattern if args.dataset_pattern else '.*(\\d+?)'
-    logger.info(f'Generate multiscale for {dataset_store}:{dataset_subpath}')
+    logger.info(f'Generate multiscale for {dataset_store}:{dataset_subpath}, dataset attributes: {dataset_attrs}')
     create_multiscale(dataset_store,
                       dataset_subpath,
                       dataset_attrs,
