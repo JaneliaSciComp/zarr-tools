@@ -101,6 +101,8 @@ def create_zarr_array(container_path:str,
                     f'Array {container_path}:{array_subpath} '
                     f'already exists with shape {current_shape} '
                 ))
+                # if the array already exists we may need to resize it
+                _resize_zarr_array(zarray, shape)
             else:
                 # this is a new array
                 current_shape = shape
@@ -117,10 +119,9 @@ def create_zarr_array(container_path:str,
                     chunk_key_encoding=chunk_key_separator,
                     **compressor_args,
                 )
-            _resize_zarr_array(zarray, shape)
-            _update_parent_attrs(root_group, array_subpath, parent_array_attrs)
-            zarray.attrs.update(array_attrs)
-            return zarray
+        _update_parent_attrs(root_group, array_subpath, parent_array_attrs)
+        zarray.attrs.update(array_attrs)
+        return zarray
     else:
         # the zarr container is the array
         if overwrite:
