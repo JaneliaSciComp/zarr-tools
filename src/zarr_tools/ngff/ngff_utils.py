@@ -3,7 +3,7 @@ import numpy as np
 
 from ome_zarr_models.v04.image import (Dataset)
 from pathlib import PurePosixPath
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 logger = logging.getLogger(__name__)
