@@ -38,6 +38,11 @@ def _define_args():
                              default=False,
                              action='store_true',
                              help='Use antialiasing during downsampling')
+    input_args.add_argument('--preserve-anisotropy', '--preserve_anisotropy',
+                            dest='preserve_anisotropy',
+                            default=False,
+                            action='store_true',
+                            help='Preserve anisotropy, i.e., do not adjust the scaling factor for spatial dimensions based on anisotropy')
     input_args.add_argument('--max-levels', '--max_levels',
                              dest='max_levels',
                              type=int,
@@ -112,7 +117,8 @@ def _run_multiscale(args):
                       args.data_type, args.antialiasing,
                       partition_size,
                       args.max_levels,
-                      dask_client)
+                      dask_client,
+                      preserve_anisotropy=args.preserve_anisotropy)
 
     logger.info(f'Finished multiscale for {args.input}:{args.input_subpath}')
     dask_client.close()

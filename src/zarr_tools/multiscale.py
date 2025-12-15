@@ -25,7 +25,8 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
                       antialiasing:bool,
                       partition_size:int,
                       max_levels:int,
-                      client: Client):
+                      client: Client,
+                      preserve_anisotropy:bool=False):
     """
     Create a multiscale pyramid in the given Zarr group.
     """
@@ -87,6 +88,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         f'source translation: {source_dataset_translation} '
         f'level0 scale: {level0_scale} '
         f'level0 translation: {level0_translation} '
+        f'preserve anisotropy: {preserve_anisotropy} '
     ))
 
     # open the multiscale group in append mode
@@ -110,11 +112,14 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         new_level_path = dataset_regex.sub(next_level, current_dataset_subpath)
         new_level = int(dataset_regex.match(new_level_path).group(1))
 
-        relative_scaling_factors, found = _get_downsample_factors(new_level,
-                                                                  current_level_shape,
-                                                                  dataset_blocksize,
-                                                                  tuple(absolute_scaling_factors * level0_scale),
-                                                                  spatial_axes_mask)
+        relative_scaling_factors, found = _get_downsample_factors(
+            new_level,
+            current_level_shape,
+            dataset_blocksize,
+            tuple(absolute_scaling_factors * level0_scale),
+            spatial_axes_mask,
+            preserve_anisotropy=preserve_anisotropy,
+        )
         if not found:
             break
 
@@ -204,7 +209,8 @@ def _get_downsample_factors(level:int,
                             target_shape:Tuple[int, ...],
                             data_spacing:Tuple[float, ...],
                             spatial_axes_mask:List[bool],
-                            anisotropy_threshold:float=0.1):
+                            anisotropy_threshold:float=0.1,
+                            preserve_anisotropy:bool=False):
 
     if all(not spatial_axes_mask[i] or data_shape[i] <= target_shape[i] for i in range(len(data_shape))):
         return [1] * len(data_shape), False
@@ -230,7 +236,7 @@ def _get_downsample_factors(level:int,
 
     for i in range(len(data_shape)):
         if spatial_axes_mask[i] and data_shape[i] > target_shape[i] // 2:
-            if abs(1 - anisotropies[i]) < anisotropy_threshold:
+            if abs(1 - anisotropies[i]) < anisotropy_threshold or preserve_anisotropy:
                 factors[i] = 2
                 factors_changed = True
 
