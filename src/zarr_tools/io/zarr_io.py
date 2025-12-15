@@ -425,7 +425,7 @@ def read_zarr_block(arr, metadata,
             else:
                 selector.append(input_block_coords[ai])
         elif a.get('type') == 'channel':
-            if channelindex is None or ch == []:
+            if channelindex is None or channelindex == []:
                 selector.append(input_block_coords[ai])
             else:
                 selector.append(channelindex)
