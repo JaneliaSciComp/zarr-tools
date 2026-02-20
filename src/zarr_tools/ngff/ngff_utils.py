@@ -381,3 +381,36 @@ def get_spatial_voxel_spacing(attrs) -> List[float] | None:
         voxel_resolution_values = (gscale_array * dscale_array).tolist()
 
     return voxel_resolution_values
+
+
+def get_spatial_dataset_voxel_spacing(attrs, dataset_path) -> List[float] | None:
+    multiscales = get_multiscales(attrs)
+    dataset = get_dataset(multiscales, dataset_path)
+    if dataset is None:
+        raise ValueError(f'No dataset found at {dataset_path} in {attrs}')
+    voxel_resolution_values = None
+    global_scale, _ = get_global_transformations(multiscales) if multiscales is not None else (None, None)
+    dataset_scale, _ = get_dataset_transformations(dataset) if dataset is not None else (None, None)
+    if global_scale is None and dataset_scale is None:
+        if attrs.get('donwsamplingFactors'):
+            # N5 at scale > S0
+            pr = (np.array(attrs['pixelResolution']) * 
+                np.array(attrs['downsamplingFactors']))
+            voxel_resolution_values = pr[::-1].tolist()  # list of voxel spacings in zyx order
+        elif attrs.get('pixelResolution'):
+            # N5 at scale S0
+            pr_attr = attrs.get('pixelResolution')
+            if type(pr_attr) is list:
+                pr = np.array(pr_attr)
+                voxel_resolution_values = pr[::-1].tolist()  # list of voxel spacings in zyx order
+            elif type(pr_attr) is dict:
+                if pr_attr.get('dimensions'):
+                    pr = np.array(pr_attr['dimensions'])
+                    voxel_resolution_values = pr[::-1].tolist()  # list of voxel spacings in zyx order
+    else:
+        nspatial_axes = len(get_spatial_axes(multiscales)) or 3 # default to 3-D
+        gscale_array = np.array(global_scale[-nspatial_axes:]) if global_scale else np.array((1,)*nspatial_axes)
+        dscale_array = np.array(dataset_scale[-nspatial_axes:]) if dataset_scale else np.array((1,)*nspatial_axes)
+        voxel_resolution_values = (gscale_array * dscale_array).tolist()
+
+    return voxel_resolution_values
