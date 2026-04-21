@@ -43,6 +43,10 @@ def _define_args():
                             default=False,
                             action='store_true',
                             help='Preserve anisotropy, i.e., do not adjust the scaling factor for spatial dimensions based on anisotropy')
+    input_args.add_argument('--downsampling', '--spatial-downsampling',
+                             dest='spatial_downsampling',
+                             type=str,
+                             help='A list of spatial downsamplings separated by ^. The scales are separated by comma, e.g. 2,2,1^2,2,2^2,2,2')
     input_args.add_argument('--max-levels', '--max_levels',
                              dest='max_levels',
                              type=int,
@@ -109,6 +113,13 @@ def _run_multiscale(args):
     partition_size = args.partition_size if args.partition_size > 0 else 1
     dataset_subpath = dataset_attrs['array_subpath']
     dataset_pattern = args.dataset_pattern if args.dataset_pattern else '.*(\\d+?)'
+    spatial_downsampling = None
+    if args.spatial_downsampling:
+        spatial_downsampling = [
+            tuple(int(x) for x in level.split(','))
+            for level in args.spatial_downsampling.split('^')
+        ]
+
     logger.info(f'Generate multiscale for {dataset_store}:{dataset_subpath}, dataset attributes: {dataset_attrs}')
     create_multiscale(dataset_store,
                       dataset_subpath,
@@ -118,7 +129,8 @@ def _run_multiscale(args):
                       partition_size,
                       args.max_levels,
                       dask_client,
-                      preserve_anisotropy=args.preserve_anisotropy)
+                      preserve_anisotropy=args.preserve_anisotropy,
+                      spatial_downsampling=spatial_downsampling)
 
     logger.info(f'Finished multiscale for {args.input}:{args.input_subpath}')
     dask_client.close()

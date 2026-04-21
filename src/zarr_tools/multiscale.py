@@ -27,7 +27,8 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
                       partition_size:int,
                       max_levels:int,
                       client: Client,
-                      preserve_anisotropy:bool=False):
+                      preserve_anisotropy:bool=False,
+                      spatial_downsampling: List[Tuple[int,...]]|None=None):
     """
     Create a multiscale pyramid in the given Zarr group.
     """
@@ -101,18 +102,27 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         new_level_path = dataset_regex.sub(next_level, current_dataset_subpath)
         new_level = int(dataset_regex.match(new_level_path).group(1))
 
-        downsampling, found = _get_downsample_factors(
-            new_level,
-            current_level_shape,
-            dataset_blocksize,
-            tuple(current_level_scale),
-            spatial_axes_mask,
-            preserve_anisotropy=preserve_anisotropy,
-        )
-        if not found:
-            break
+        if spatial_downsampling is not None:
+            if nlevels >= len(spatial_downsampling):
+                break
+            level_downsampling = spatial_downsampling[nlevels]
+            # stop if all spatial dimensions are already smaller than the chunk size
+            if all(not spatial_axes_mask[i] or current_level_shape[i] <= dataset_blocksize[i]
+                   for i in range(len(current_level_shape))):
+                break
+        else:
+            level_downsampling, found = _get_downsample_factors(
+                new_level,
+                current_level_shape,
+                dataset_blocksize,
+                tuple(current_level_scale),
+                spatial_axes_mask,
+                preserve_anisotropy=preserve_anisotropy,
+            )
+            if not found:
+                break
 
-        relative_scaling_factors  = np.array(downsampling)
+        relative_scaling_factors  = np.array(level_downsampling)
         new_scaling_factors = scaling_factors * relative_scaling_factors
         new_level_scale = tuple(relative_scaling_factors * current_level_scale)
         new_level_translation = tuple([round((s * (dsf - 1) / 2) + tr, 3) if dsf > 1 else tr
