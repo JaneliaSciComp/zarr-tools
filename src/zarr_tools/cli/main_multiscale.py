@@ -1,5 +1,6 @@
 import argparse
 import logging
+import re
 
 from dask.distributed import (Client, LocalCluster)
 
@@ -46,7 +47,7 @@ def _define_args():
     input_args.add_argument('--downsampling', '--spatial-downsampling',
                              dest='spatial_downsampling',
                              type=str,
-                             help='A list of spatial downsamplings separated by ^. The scales are separated by comma, e.g. 2,2,1^2,2,2^2,2,2')
+                             help='A list of spatial downsamplings (Xdownscale,Ydownscale,Zdownscale) separated by ^. The scales are separated by comma, e.g. 2,2,1^2,2,2^2,2,2')
     input_args.add_argument('--max-levels', '--max_levels',
                              dest='max_levels',
                              type=int,
@@ -116,8 +117,8 @@ def _run_multiscale(args):
     spatial_downsampling = None
     if args.spatial_downsampling:
         spatial_downsampling = [
-            tuple(int(x) for x in level.split(','))
-            for level in args.spatial_downsampling.split('^')
+            tuple(int(x) for x in reversed(level.split(',')))
+            for level in re.split(r'[\^~]', args.spatial_downsampling)
         ]
 
     logger.info(f'Generate multiscale for {dataset_store}:{dataset_subpath}, dataset attributes: {dataset_attrs}')

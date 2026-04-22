@@ -105,7 +105,16 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         if spatial_downsampling is not None:
             if nlevels >= len(spatial_downsampling):
                 break
-            level_downsampling = spatial_downsampling[nlevels]
+            level_spatial_downsampling = spatial_downsampling[nlevels]
+            # extend to all dimensions if only spatial dims were provided
+            ndims = len(current_level_shape)
+            if len(level_spatial_downsampling) < ndims:
+                level_downsampling = tuple(
+                    level_spatial_downsampling[sum(spatial_axes_mask[:i])] if spatial_axes_mask[i] else 1
+                    for i in range(ndims)
+                )
+            else:
+                level_downsampling = level_spatial_downsampling
             # stop if all spatial dimensions are already smaller than the chunk size
             if all(not spatial_axes_mask[i] or current_level_shape[i] <= dataset_blocksize[i]
                    for i in range(len(current_level_shape))):
