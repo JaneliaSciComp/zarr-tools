@@ -161,9 +161,13 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
             f'pyramid_attrs -> {pyramid_attrs} '
         ))
 
-        chunk_key_separator = ({'name': 'v2', 'separator': '/'} 
+        chunk_key_separator = ({'name': 'v2', 'separator': '/'}
                                if multiscale_group.metadata.zarr_format == 2
                                else None)
+        sharding_kwargs = {}
+        source_shards = getattr(dataset_arr, 'shards', None)
+        if source_shards is not None:
+            sharding_kwargs['shards'] = source_shards
         new_dataset_arr = multiscale_group.require_array(
             new_level_path,
             shape=new_level_shape,
@@ -173,6 +177,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
             fill_value=dataset_arr.fill_value,
             exact=True,
             chunk_key_encoding=chunk_key_separator,
+            **sharding_kwargs,
         )
 
         downsample = functools.partial(
