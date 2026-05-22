@@ -61,6 +61,7 @@ def create_zarr_array(container_path:str,
                       overwrite:bool=False,
                       parent_array_attrs:dict={},
                       zarr_format:int=2, # default zarr v2 format
+                      shard_shape:Tuple[int]|None=None,
                       **array_attrs):
 
     real_container_path = os.path.realpath(container_path)
@@ -71,10 +72,18 @@ def create_zarr_array(container_path:str,
 
     chunk_key_separator = {'name': 'v2', 'separator': '/'} if zarr_format == 2 else None
 
+    sharding_kwargs = {}
+    if shard_shape is not None:
+        if zarr_format != 3:
+            logger.warning('Sharding requested but zarr_format != 3; ignoring shards')
+        else:
+            sharding_kwargs['shards'] = tuple(shard_shape)
+
     if array_subpath:
         logger.info((
             f'Create array {container_path}:{array_subpath} '
             f'compressor={compressor}, shape: {shape}, chunks: {chunks} '
+            f'shards shape: {shard_shape} '
             f'parent attrs: {parent_array_attrs} '
             f'array attrs: {array_attrs} '
         ))
@@ -91,6 +100,7 @@ def create_zarr_array(container_path:str,
                 overwrite=True,
                 chunk_key_encoding=chunk_key_separator,
                 **compressor_args,
+                **sharding_kwargs,
             )
         else:
             if array_subpath in root_group:
@@ -118,6 +128,7 @@ def create_zarr_array(container_path:str,
                     overwrite=True,
                     chunk_key_encoding=chunk_key_separator,
                     **compressor_args,
+                    **sharding_kwargs,
                 )
         _update_parent_attrs(root_group, array_subpath, parent_array_attrs)
         zarray.attrs.update(array_attrs)
@@ -135,6 +146,7 @@ def create_zarr_array(container_path:str,
                 zarr_format=zarr_format,
                 chunk_key_encoding=chunk_key_separator,
                 **compressor_args,
+                **sharding_kwargs,
             )
         elif zarr.storage.contains_array(store):
             # the array already exists
@@ -151,6 +163,7 @@ def create_zarr_array(container_path:str,
                 zarr_format=zarr_format,
                 chunk_key_encoding=chunk_key_separator,
                 **compressor_args,
+                **sharding_kwargs,
             )
         zarray.attrs.update(array_attrs)
         return zarray
@@ -173,6 +186,20 @@ def create_zarr_group(container_path:str, group_subpath:str,
         # create the group
         g = root_group.create_group(group_subpath)
     return g
+
+
+def derive_shard_shape(output_blocksize, zarr_format, sharding_factor):
+    """Return shard shape or None if sharding is disabled or zarr_format != 3."""
+    if not sharding_factor or zarr_format < 3:
+        return None
+    if len(sharding_factor) != len(output_blocksize):
+        raise ValueError((
+            f'Sharding factor ({sharding_factor}) and blocksize ({output_blocksize}) '
+            f'must have the same length {len(sharding_factor)} != {len(output_blocksize)} '
+        ))
+    if any(f <= 0 for f in sharding_factor):
+        raise ValueError(f'All sharding factors must be positive, got {sharding_factor}')
+    return tuple(b * f for b, f in zip(output_blocksize, sharding_factor))
 
 
 def open_zarr_store(data_path:str, data_subpath:str, data_store_name:str|None=None, mode:str='r') -> Tuple[zarr.storage.StoreLike, dict]:
