@@ -219,9 +219,8 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         nlevels = nlevels + 1
 
     # update multscales group attributes
-    multiscale_group.attrs.update({
-        'multiscales': [ pyramid_attrs ],
-    })
+    # I assume the dataset_attrs changed too when the multiscale extract from it were changed
+    multiscale_group.attrs.update(dataset_attrs)
 
 
 def _get_downsample_factors(target_level:int,

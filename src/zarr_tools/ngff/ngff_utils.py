@@ -176,6 +176,7 @@ def _create_ome_metadata_0_5(name, dataset_path, axes, voxel_scale, voxel_transl
         multiscale_axes.insert(0, {
             "name": "t",
             "type": "time",
+            "unit": "millisecond",
         })
 
     dataset = {
@@ -348,7 +349,7 @@ def get_multiscales(attrs, index=0):
     return multiscales[index] # get the multiscale attributes at the specified index
 
 
-def is_ome(attrs):
+def is_omezarr(attrs):
     """
     Get the multiscales attributes.
     """

@@ -4,7 +4,7 @@ import re
 import zarr
 
 from ..ngff.ngff_utils import (get_axes, get_dataset, get_datasets,
-                               get_multiscales, is_ome,
+                               get_multiscales, is_omezarr,
                                get_axes_from_multiscales, get_global_transformations,
                                get_dataset_transformations)
 from typing import List,Tuple
@@ -23,14 +23,16 @@ def _get_compressor(compressor: str | None, compression_opts: dict, zarr_format:
         import zarr.codecs as zv3codecs
 
         compressor_map = {
+            'zstd': zv3codecs.ZstdCodec,
+            'gzip': zv3codecs.GzipCodec,
+            'blosc': zv3codecs.BloscCodec,
+            'crc32c': zv3codecs.Crc32cCodec,
+            # 'packbits', 'zlib', 'bz2', 'lzma', 'lz4' → only available as numcodecs
             'packbits': zv3codecs.PackBits,
-            'zstd': zv3codecs.Zstd,
             'zlib': zv3codecs.Zlib,
-            'gzip': zv3codecs.GZip,
             'bz2': zv3codecs.BZ2,
             'lzma': zv3codecs.LZMA,
             'lz4': zv3codecs.LZ4,
-            'blosc': zv3codecs.Blosc,
         }
         codec_cls = compressor_map.get(compressor.lower())
         if codec_cls is None:
@@ -272,7 +274,7 @@ def _lookup_ome_multiscales(data_container, data_subpath):
         container_item = data_container[container_item_subpath]
         container_item_attrs = container_item.attrs.asdict()
 
-        if is_ome(container_item_attrs):
+        if is_omezarr(container_item_attrs):
             logger.debug(f'Found OME metadata at {container_item_subpath}: {container_item_attrs}')
             # found a group that has attributes which contain multiscales list
             return container_item, '/'.join(dataset_comps[dataset_comps_index:]), container_item_attrs
@@ -281,7 +283,7 @@ def _lookup_ome_multiscales(data_container, data_subpath):
 
     # if no multiscales have found - look directly under root
     data_container_attrs = data_container.attrs.asdict()
-    if is_ome(data_container_attrs):
+    if is_omezarr(data_container_attrs):
         logger.debug(f'Found OME metadata directly under root: {data_container_attrs}')
         # the container itself has multiscales attributes
         return data_container, data_subpath, data_container_attrs
