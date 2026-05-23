@@ -342,14 +342,19 @@ def get_multiscales(attrs, index=0):
     """
     Get the multiscales attributes.
     """
-    return attrs.get('multiscales', [{}])[index] # get the multiscale attributes at the specified index
+    ome = attrs.get('ome', None)
+    if ome:
+        multiscales = ome.get('multiscales', [{}])
+    else:
+        multiscales = attrs.get('multiscales', [{}])
+    return multiscales[index] # get the multiscale attributes at the specified index
 
 
-def has_multiscales(attrs):
+def is_ome(attrs):
     """
     Get the multiscales attributes.
     """
-    return 'multiscales' in attrs
+    return 'multiscales' in attrs or 'ome' in attrs
 
 
 def get_spatial_voxel_spacing(attrs) -> List[float] | None:

@@ -4,7 +4,7 @@ import re
 import zarr
 
 from ..ngff.ngff_utils import (get_axes, get_dataset, get_datasets,
-                               get_multiscales, has_multiscales,
+                               get_multiscales, is_ome,
                                get_axes_from_multiscales, get_global_transformations,
                                get_dataset_transformations)
 from typing import List,Tuple
@@ -272,8 +272,8 @@ def _lookup_ome_multiscales(data_container, data_subpath):
         container_item = data_container[container_item_subpath]
         container_item_attrs = container_item.attrs.asdict()
 
-        if has_multiscales(container_item_attrs):
-            logger.debug(f'Found multiscales at {container_item_subpath}: {container_item_attrs}')
+        if is_ome(container_item_attrs):
+            logger.debug(f'Found OME metadata at {container_item_subpath}: {container_item_attrs}')
             # found a group that has attributes which contain multiscales list
             return container_item, '/'.join(dataset_comps[dataset_comps_index:]), container_item_attrs
         else:
@@ -281,8 +281,8 @@ def _lookup_ome_multiscales(data_container, data_subpath):
 
     # if no multiscales have found - look directly under root
     data_container_attrs = data_container.attrs.asdict()
-    if has_multiscales(data_container_attrs):
-        logger.debug(f'Found multiscales directly under root: {data_container_attrs}')
+    if is_ome(data_container_attrs):
+        logger.debug(f'Found OME metadata directly under root: {data_container_attrs}')
         # the container itself has multiscales attributes
         return data_container, data_subpath, data_container_attrs
     else:
