@@ -191,22 +191,20 @@ def _create_ome_metadata_0_5(name, dataset_path, axes, voxel_scale, voxel_transl
             }
         ]
     }
-    multiscales = {
-        'multiscales': [
-            {
-                'axes': multiscale_axes,
-                'datasets': [
-                    dataset
-                ],
-                'name': '/',
-            }
-        ]
+    multiscale = {
+        'axes': multiscale_axes,
+        'datasets': [
+            dataset
+        ],
+        'name': name,
     }
 
     return {
         'ome': {
             'version': ome_version,
-            'multiscales': multiscales
+            'multiscales': [
+                multiscale,
+            ]
         }
     }
 
