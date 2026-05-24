@@ -23,7 +23,7 @@ def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
     """
     Combine arrays
     """
-    block_slices = slices_from_chunks(normalize_chunks(output_zarray.chunks, shape=output_zarray.shape))
+    block_slices = slices_from_chunks(normalize_chunks(output_zarray.metadata.chunk_grid.chunk_shape, shape=output_zarray.shape))
     spatial_block_slices = list(set(s[-3:] for s in block_slices))
 
     partitioned_block_slices = tuple(partition_all(partition_size, spatial_block_slices))

@@ -189,7 +189,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
             antialiasing=antialiasing,
         )
 
-        output_chunks = normalize_chunks(new_dataset_arr.chunks, shape=new_dataset_arr.shape)
+        output_chunks = normalize_chunks(new_dataset_arr.metadata.chunk_grid.chunk_shape, shape=new_dataset_arr.shape)
         output_slices = slices_from_chunks(output_chunks)
         partitioned_output_slices = tuple(partition_all(partition_size, output_slices))
         logger.info(f'Partition level {new_level} with {len(output_slices)} blocks into {len(partitioned_output_slices)} partitions of up to {partition_size} blocks')
