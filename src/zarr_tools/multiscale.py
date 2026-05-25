@@ -35,6 +35,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
     logger.info(f'Create multiscale for dataset {dataset_attrs}')
     dataset_regex = re.compile(dataset_pattern)
     pyramid_attrs = get_multiscales(dataset_attrs)
+    logger.info(f'Current multiscale attributes {pyramid_attrs}')
     source_dataset_shape = dataset_attrs.get('array_shape', [])
 
     dataset_path_comps = dataset_path.strip('/').split('/')
