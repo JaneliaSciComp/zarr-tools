@@ -65,6 +65,7 @@ def _copy_blocks(coords, source_arrays=[], output=[]):
             output_block_coords = (ch,) + input_spatial_coords
 
         try:
+            logger.debug(f'Write block at: {output_block_coords}')
             output[output_block_coords] = arr[input_spatial_coords]
             nblocks = nblocks + 1
         except Exception as e:

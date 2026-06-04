@@ -14,7 +14,7 @@ from zarr_tools.combine_arrays import combine_arrays
 from zarr_tools.configure_logging import configure_logging
 from zarr_tools.dask_tools import (load_dask_config, ConfigureWorkerPlugin)
 from zarr_tools.io.zarr_io import (create_zarr_array, create_zarr_group,
-                                   derive_shar_shape, open_zarr_store)
+                                   derive_shard_shape, open_zarr_store)
 
 
 logger:logging.Logger
@@ -97,7 +97,7 @@ def _define_args():
                             type=_inttuple,
                             dest='output_chunks',
                             metavar='X,Y,Z',
-                            default=(128, 128, 128),
+                            default=(64, 64, 64),
                             help='Spatial output chunks')
     input_args.add_argument('--output-type', '--output_type',
                             type=str,
@@ -110,7 +110,7 @@ def _define_args():
                             help='Overwrite container if it exists')
     input_args.add_argument('--zarr-format', '--zarr_format',
                             type=int,
-                            default=2,
+                            default=3,
                             dest='zarr_format',
                             help='Zarr format (2 or 3 for v2 or v3)')
     input_args.add_argument('--sharding-factor',
@@ -245,7 +245,7 @@ def _run_combine_arrays(args):
         input_zarrays.append((array_container, zarray_subpath, zarray, ap.targetCh, ap.targetTp))
 
     xyz_output_chunks = args.output_chunks if args.output_chunks else (128,) * 3
-    xyz_output_shards = derive_shar_shape(xyz_output_chunks, args.zarr_format, args.sharding_factor)  if args.sharding_factor else None
+    xyz_output_shards = derive_shard_shape(xyz_output_chunks, args.zarr_format, args.sharding_factor)  if args.sharding_factor else None
 
     if max_tp is not None:
         output_shape = (max_tp+1, max_ch+1) + spatial_shape
