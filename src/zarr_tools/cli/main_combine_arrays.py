@@ -121,7 +121,6 @@ def _define_args():
                             help='Zarr sharding factor - this is ignored for zarr v2')
     input_args.add_argument('--ome-version', '--ome_version',
                             type=str,
-                            default='0.4',
                             dest='ome_version',
                             help='OME version')
 
@@ -263,13 +262,19 @@ def _run_combine_arrays(args):
             voxel_spacing = list(args.voxel_spacing[::-1])
 
         voxel_translation = [0, 0, 0]
+        if args.ome_version:
+            ome_version = args.ome_version
+        elif args.zarr_format == 2:
+            ome_version = '0.4'
+        else:
+            ome_version = '0.5'
         ome_metadata = create_ome_metadata(os.path.basename(args.output),
                                            args.output_subpath,
                                            axes,
                                            voxel_spacing,
                                            voxel_translation,
                                            (4 if max_tp is None else 5),
-                                           ome_version=args.ome_version)
+                                           ome_version=ome_version)
         if args.as_labels:
             logger.info(f'Create labels group: {args.output_subpath}')
             create_labels(args.output, args.output_subpath, args.zarr_format)
