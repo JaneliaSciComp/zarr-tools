@@ -16,6 +16,7 @@ dependencies = [
     "pydantic==2.12.4",
     "pyyaml",
     "tornado",
+    "toolz=1.1.0",
     "xarray-multiscale==2.1.0",
     "zarr>3,<4",
 ]
