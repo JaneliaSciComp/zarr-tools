@@ -277,19 +277,23 @@ def _downsample(input:zarr.Array,
     input_block = input[input_coords]
     # only downsample source_data if it is not all 0s
     if not (input_block == 0).all():
-        if method == 'mode':
-            # this is the method used for segmentation data
-            output[output_coords] = windowed_mode(input_block, window_size=downsampling_factors)
-        else:
-            # this is the method used for raw image data
-            if antialiasing:
-                # blur data in chunk before downsampling to reduce aliasing of the image
-                # conservative Gaussian blur coeff: 2/2.5 = 0.8
-                sigma = [0 if factor == 1 else factor/2.5 for factor in downsampling_factors]
-                filtered_data = ndi.gaussian_filter(input_block, sigma=sigma)
-                output[output_coords] = windowed_mean(filtered_data, window_size=downsampling_factors)
+        try:
+            if method == 'mode':
+                # this is the method used for segmentation data
+                output[output_coords] = windowed_mode(input_block, window_size=downsampling_factors)
             else:
-                output[output_coords] = windowed_mean(input_block, window_size=downsampling_factors)
+                # this is the method used for raw image data
+                if antialiasing:
+                    # blur data in chunk before downsampling to reduce aliasing of the image
+                    # conservative Gaussian blur coeff: 2/2.5 = 0.8
+                    sigma = [0 if factor == 1 else factor/2.5 for factor in downsampling_factors]
+                    filtered_data = ndi.gaussian_filter(input_block, sigma=sigma)
+                    output[output_coords] = windowed_mean(filtered_data, window_size=downsampling_factors)
+                else:
+                    output[output_coords] = windowed_mean(input_block, window_size=downsampling_factors)
+        except Exception as e:
+            logger.exception(f'Error resampling {input_block.shape} block at {input_coords} -> {downsampling_factors}', stack_info=True)
+            raise e
         res = True
     else:
         res = False
