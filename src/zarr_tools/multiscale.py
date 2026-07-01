@@ -12,7 +12,8 @@ from .ngff.ngff_utils import (get_transformations_from_datasetpath,
                               get_spatial_axes, get_multiscales, add_new_dataset)
 from toolz import partition_all
 from typing import List, Tuple
-from xarray_multiscale import windowed_mean, windowed_mode
+from xarray_multiscale import windowed_mean
+from xarray_multiscale.reducers import windowed_mode_scipy
 
 
 logger = logging.getLogger(__name__)
@@ -280,7 +281,11 @@ def _downsample(input:zarr.Array,
         try:
             if method == 'mode':
                 # this is the method used for segmentation data
-                output[output_coords] = windowed_mode(input_block, window_size=downsampling_factors)
+                # Use windowed_mode_scipy directly instead of windowed_mode: the latter
+                # dispatches to windowed_mode_countless for small windows, which raises a
+                # TypeError when the window volume is 2 (e.g. anisotropic single-axis 2x
+                # downsampling with factors like (1,1,1,1,2)). scipy handles all window sizes.
+                output[output_coords] = windowed_mode_scipy(input_block, window_size=downsampling_factors)
             else:
                 # this is the method used for raw image data
                 if antialiasing:
