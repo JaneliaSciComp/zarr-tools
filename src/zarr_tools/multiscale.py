@@ -136,7 +136,7 @@ def create_multiscale(dataset_store: zarr.storage.StoreLike,
         relative_scaling_factors  = np.array(level_downsampling)
         new_scaling_factors = scaling_factors * relative_scaling_factors
         new_level_scale = tuple(relative_scaling_factors * current_level_scale)
-        new_level_translation = tuple([round((s * (dsf - 1) / 2) + tr, 3) if dsf > 1 else tr
+        new_level_translation = tuple([(s * (dsf - 1) / 2) + tr if dsf > 1 else tr
                                                  for (s, dsf, tr)
                                                  in zip(current_level_scale, relative_scaling_factors, current_level_translation)])
         new_level_shape_array = (current_level_shape / relative_scaling_factors).astype(int)
