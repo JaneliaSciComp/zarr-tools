@@ -62,11 +62,15 @@ def _create_ome_metadata_0_4(name, dataset_path, axes, voxel_scale, voxel_transl
 
     if len(voxel_scale) < image_ndims:
         scale = ([1] * (image_ndims - len(voxel_scale))) + voxel_scale
+    elif len(voxel_scale) > image_ndims:
+        scale = voxel_scale[-image_ndims:]
     else:
         scale = voxel_scale
 
     if len(voxel_translation) < image_ndims:
         translation = ([0] * (image_ndims - len(voxel_translation))) + voxel_translation
+    elif len(voxel_translation) > image_ndims:
+        translation = voxel_translation[-image_ndims:]
     else:
         translation = voxel_translation
 
