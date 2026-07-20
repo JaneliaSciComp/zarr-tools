@@ -38,6 +38,10 @@ def add_new_dataset(multiscales_attrs, dataset_path, scale_transform, translatio
 
 def create_ome_metadata(name, dataset_path, axes, voxel_spacing, voxel_translation, image_ndims,
                         default_unit='micrometer', ome_version='0.4'):
+    logger.debug((
+        f'Create OME metadata for {image_ndims}-D image '
+        f'with {voxel_spacing} spacing and {voxel_translation} translation '
+    ))
     # 0.5 is not compatible with 0.4 but 0.6+ should keep the backward compatibility
     if ome_version == '0.4':
         return _create_ome_metadata_0_4(name, dataset_path, axes, voxel_spacing, voxel_translation,
@@ -146,7 +150,6 @@ def _create_ome_metadata_0_5(name, dataset_path, axes, voxel_scale, voxel_transl
     else:
         translation = voxel_translation
 
-    print('!!!!!!!!! AXES ', axes)
     if axes is None:
         multiscale_axes = [
             {
