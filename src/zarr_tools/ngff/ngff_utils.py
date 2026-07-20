@@ -146,6 +146,7 @@ def _create_ome_metadata_0_5(name, dataset_path, axes, voxel_scale, voxel_transl
     else:
         translation = voxel_translation
 
+    print('!!!!!!!!! AXES ', axes)
     if axes is None:
         multiscale_axes = [
             {
