@@ -16,7 +16,7 @@ from typing import List, Tuple
 logger = logging.getLogger(__name__)
 
 
-def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
+def combine_arrays(input_zarrays: List[Tuple[str, str, zarr.Array, Tuple[int, ...], int, int | None]],
                    output_zarray:zarr.Array,
                    client: Client,
                    partition_size=100000):
@@ -53,12 +53,11 @@ def combine_arrays(input_zarrays: List[Tuple[zarr.Array, int, int]],
 
 
 def _copy_blocks(coords, source_arrays=[], output=[]):
-    # source_arrays have: (path, subpath, zarray, channel, timepoint)
-    # the input arrays are all 3-D for now
-    # this package cannot handle inputs other than 3-D
+    # source_arrays have: (path, subpath, zarray, source_prefix, channel, timepoint)
+    # source_prefix selects the (t, c) of a 4-D/5-D source; it is () for 3-D sources
     nblocks = 0
-    input_spatial_coords = coords[-3:] 
-    for (_, _, arr, ch, tp) in source_arrays:
+    input_spatial_coords = coords[-3:]
+    for (_, _, arr, source_prefix, ch, tp) in source_arrays:
         if tp is not None:
             output_block_coords = (tp, ch) + input_spatial_coords
         else:
@@ -66,7 +65,7 @@ def _copy_blocks(coords, source_arrays=[], output=[]):
 
         try:
             logger.debug(f'Write block at: {output_block_coords}')
-            output[output_block_coords] = arr[input_spatial_coords]
+            output[output_block_coords] = arr[source_prefix + input_spatial_coords]
             nblocks = nblocks + 1
         except Exception as e:
             logger.exception(f'Error copying from {input_spatial_coords} to {output_block_coords}', e)

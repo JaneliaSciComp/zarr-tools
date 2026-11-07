@@ -8,6 +8,8 @@ from dask.distributed import (Client, LocalCluster)
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
+from typing import Optional, Tuple
+
 from zarr_tools.ngff.ngff_utils import (create_ome_metadata, get_axes_from_multiscales,
                                         get_multiscales, get_spatial_voxel_spacing)
 from zarr_tools.combine_arrays import combine_arrays
@@ -24,36 +26,48 @@ logger:logging.Logger
 class ZArrayParams:
     sourcePath: str
     sourceSubpath: str
+    sourceCh: int
     targetCh: int
-    targetTp: int|None
+    sourceTp: Optional[int]
+    targetTp: Optional[int]
 
 
-def _arrayparams(s: str):
-    svalues = s.split(':', 3)
+def _arrayparams(s: str) -> ZArrayParams:
+    svalues = s.split(':', 5)
     sourcePath = svalues[0] if len(svalues) > 0 else ''
     sourceSubpath = svalues[1] if len(svalues) > 1 else ''
-    stargetCh = svalues[2] if len(svalues) > 2 else ''
-    stargetTp = svalues[3] if len(svalues) > 3 else ''
+    ssourceCh = svalues[2] if len(svalues) > 2 else ''
+    stargetCh = svalues[3] if len(svalues) > 3 else ''
+    ssourceTp = svalues[4] if len(svalues) > 4 else ''
+    stargetTp = svalues[5] if len(svalues) > 5 else ''
+    try:
+        sourceCh = int(ssourceCh) if ssourceCh else 0 
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'Invalid source channel in input array arg: {s}')
     try:
         targetCh = int(stargetCh) if stargetCh else 0
     except ValueError:
         raise argparse.ArgumentTypeError(f'Invalid target channel in input array arg: {s}')
     try:
+        sourceTp = int(ssourceTp) if ssourceTp else None
+    except ValueError:
+        raise argparse.ArgumentTypeError(f'Invalid source channel in input array arg: {s}')
+    try:
         targetTp = int(stargetTp) if stargetTp else None
     except ValueError:
         raise argparse.ArgumentTypeError(f'Invalid target timepoint in input array arg: {s}')
 
-    return ZArrayParams(sourcePath, sourceSubpath, targetCh, targetTp)
+    return ZArrayParams(sourcePath, sourceSubpath, sourceCh, targetCh, sourceTp, targetTp)
 
 
-def _dictfromjson(arg:str):
+def _dictfromjson(arg:str) -> dict:
     if arg:
         return json.loads(arg)
     else:
         return {}
 
 
-def _inttuple(arg:str):
+def _inttuple(arg:str) -> Tuple[int]:
     if arg is not None and arg.strip():
         return tuple([int(d) for d in arg.split(',')])
     else:
@@ -119,6 +133,11 @@ def _define_args():
                             default=(),
                             dest='sharding_factor',
                             help='Zarr sharding factor - this is ignored for zarr v2')
+    input_args.add_argument('--target-timepoint',
+                            type=int,
+                            default=None,
+                            dest='default_target_tp',
+                            help='Default target timepoint')
     input_args.add_argument('--ome-version', '--ome_version',
                             type=str,
                             dest='ome_version',
@@ -135,11 +154,15 @@ def _define_args():
     
     input_args.add_argument('--array-params', '--array_params',
                             nargs='+',
-                            metavar='SOURCEPATH:SOURCESUBPATH:TARGETCH:TARGETTP',
-                            default=[None, None, None, None],
+                            metavar='SOURCEPATH:SOURCESUBPATH:SOURCECH:TARGETCH:SOURCETP:TARGETTP',
+                            default=[None, None, None, None, None],
                             type=_arrayparams,
                             dest='array_params',
-                            help='Input array argument')
+                            help=('Input array argument. SOURCEPATH defaults to --input; '
+                                  'SOURCECH and TARGETCH default to 0; '
+                                  'SOURCETP applies only to 5-D (t,c,z,y,x) sources and defaults to 0; '
+                                  'TARGETTP defaults to --target-timepoint - '
+                                  'if neither is set for any array the output is 4-D (c,z,y,x)'))
 
     input_args.add_argument('--as-labels', '--as_labels',
                             dest='as_labels',
@@ -203,7 +226,7 @@ def _run_combine_arrays(args):
     input_zarrays = []
     spatial_shape = ()
     max_ch = 0
-    max_tp = None
+    max_tp = args.default_target_tp
     errors_found = []
     output_type = args.output_type
     voxel_spacing = None
@@ -215,8 +238,22 @@ def _run_combine_arrays(args):
         zarray_subpath = zattrs['array_subpath']
         zarray = zarr.open_array(store=zstore, path=zarray_subpath)
 
+        # leading (non-spatial) indices into the source: OME order is (t, c, z, y, x)
+        if zarray.ndim == 5:
+            source_prefix = (ap.sourceTp if ap.sourceTp is not None else 0, ap.sourceCh)
+        elif zarray.ndim == 4:
+            if ap.sourceTp is not None and ap.sourceTp > 0:
+                errors_found.append(f'{array_container}:{ap.sourceSubpath} is 4-D (c,z,y,x) - source timepoint {ap.sourceTp} not applicable')
+            source_prefix = (ap.sourceCh,)
+        elif zarray.ndim == 3:
+            source_prefix = ()
+        else:
+            errors_found.append(f'Unsupported source rank {zarray.ndim} for {array_container}:{ap.sourceSubpath}')
+            continue
+
         current_voxel_spacing = get_spatial_voxel_spacing(zattrs)
         if voxel_spacing is None:
+            logger.info(f'Set voxel spacing to {current_voxel_spacing}')
             voxel_spacing = current_voxel_spacing
         elif voxel_spacing != current_voxel_spacing:
             logger.warning(f'Voxel spacing for {current_voxel_spacing} differs from the first found: {voxel_spacing}')
@@ -228,23 +265,24 @@ def _run_combine_arrays(args):
             output_type = zarray.dtype
 
         if spatial_shape == ():
-            spatial_shape = zarray.shape
+            spatial_shape = zarray.shape[-3:]
         else:
-            if spatial_shape != zarray.shape:
+            if spatial_shape != zarray.shape[-3:]:
                 errors_found.append(f'All zarr arrays must have the same spatial dimensions: {spatial_shape} - {array_container}:{ap.sourceSubpath} has shape {zarray.shape}')
         if ap.targetCh > max_ch:
             max_ch = ap.targetCh
 
-        if ap.targetTp is not None:
-            if max_tp is None:
-                max_tp = ap.targetTp
-            elif ap.targetTp > max_tp:
-                max_tp = ap.targetTp
-        
-        input_zarrays.append((array_container, zarray_subpath, zarray, ap.targetCh, ap.targetTp))
+        target_tp = ap.targetTp if ap.targetTp is not None else args.default_target_tp
+        if target_tp is not None:
+            if max_tp is None or target_tp > max_tp:
+                max_tp = target_tp
+
+        input_zarrays.append((array_container, zarray_subpath, zarray, source_prefix, ap.targetCh, target_tp))
 
     xyz_output_chunks = args.output_chunks if args.output_chunks else (128,) * 3
     xyz_output_shards = derive_shard_shape(xyz_output_chunks, args.zarr_format, args.sharding_factor)  if args.sharding_factor else None
+
+    logger.info(f'Output shard size: {xyz_output_shards}')
 
     if max_tp is not None:
         output_shape = (max_tp+1, max_ch+1) + spatial_shape
@@ -255,6 +293,7 @@ def _run_combine_arrays(args):
         output_chunks = (1,) + xyz_output_chunks[::-1]
         output_shards = ((1,) + xyz_output_shards[::-1]) if xyz_output_shards is not None else None
 
+    logger.info(f'Output shape (spatial shape)/shards/chunks: {output_shape}({spatial_shape})/{output_shards}/{output_chunks}')
     if len(errors_found) > 0:
         logger.error(f'Errors found: {errors_found}')
     else:
