@@ -277,7 +277,7 @@ def _downsample(input:zarr.Array,
     logger.debug(f'Resample block {input_coords} -> {downsampling_factors}')
     input_block = input[input_coords]
     # only downsample source_data if it is not all 0s
-    if not (input_block == 0).all():
+    if input_block.any():
         try:
             if method == 'mode':
                 # this is the method used for segmentation data
